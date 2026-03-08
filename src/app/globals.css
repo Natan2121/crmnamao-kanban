@@ -1,0 +1,68 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f4f7fb;
+  --foreground: #0f172a;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-sans);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.kanban-shell .react-kanban-board {
+  align-items: flex-start;
+  display: inline-flex;
+  gap: 1rem;
+  min-width: max-content;
+}
+
+.kanban-shell .react-kanban-column {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.88),
+    rgba(248, 250, 252, 0.96)
+  );
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: 1.75rem;
+  box-shadow: 0 25px 60px rgba(15, 23, 42, 0.08);
+  padding: 0.9rem;
+  width: 320px;
+}
+
+.kanban-shell .react-kanban-column > div:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  min-height: 520px;
+}
+
+.kanban-shell .react-kanban-card {
+  background: transparent;
+  box-shadow: none;
+  margin: 0;
+  padding: 0;
+}
+
+.kanban-shell .react-kanban-card--dragging {
+  transform: rotate(1.5deg) scale(1.01);
+}
+
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
