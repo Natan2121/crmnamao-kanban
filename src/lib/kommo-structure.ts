@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 
 import bundledPipelines from "@/data/kommo-pipelines.json";
@@ -48,6 +48,10 @@ function resolveStructurePath() {
   }
 
   const backupDirectory = join(repoRoot(), "backups");
+  if (!existsSync(backupDirectory)) {
+    return null;
+  }
+
   const fileName = readdirSync(backupDirectory)
     .filter((entry) => /^kommo-structure-.*\.json$/i.test(entry))
     .sort()
