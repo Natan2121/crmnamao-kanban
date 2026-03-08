@@ -30,6 +30,8 @@ KOMMO_STRUCTURE_PATH=../../backups/kommo-structure-2026-03-08.json
 
 Se `KOMMO_STRUCTURE_PATH` nao for informado, o app procura automaticamente o arquivo mais recente em `../../backups/kommo-structure-*.json`.
 
+Se esse diretório nao existir no deploy, o app usa o bundle estatico em `src/data/kommo-pipelines.json`, gerado a partir da estrutura importada do Kommo.
+
 ## Rodar local
 
 ```bash

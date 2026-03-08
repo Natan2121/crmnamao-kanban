@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 
+import bundledPipelines from "@/data/kommo-pipelines.json";
 import { getServerEnv } from "@/lib/env";
 import { KommoPipeline } from "@/lib/types";
 
@@ -53,9 +54,7 @@ function resolveStructurePath() {
     .at(-1);
 
   if (!fileName) {
-    throw new Error(
-      "Nenhum arquivo kommo-structure-*.json foi encontrado em backups/.",
-    );
+    return null;
   }
 
   return join(backupDirectory, fileName);
@@ -66,9 +65,14 @@ export function getKommoPipelines() {
     return cachedPipelines;
   }
 
-  const raw = JSON.parse(
-    readFileSync(resolveStructurePath(), "utf8"),
-  ) as RawKommoStructure;
+  const structurePath = resolveStructurePath();
+
+  if (!structurePath) {
+    cachedPipelines = bundledPipelines as KommoPipeline[];
+    return cachedPipelines;
+  }
+
+  const raw = JSON.parse(readFileSync(structurePath, "utf8")) as RawKommoStructure;
 
   const pipelines =
     raw.endpoints?.leadPipelines?.json?._embedded?.pipelines ?? [];
