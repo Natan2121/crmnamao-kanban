@@ -1,5 +1,5 @@
 import { getServerEnv, trimTrailingSlash } from "@/lib/env";
-import { fetchInboxes, fetchPipelineConversations } from "@/lib/chatwoot-api";
+import { fetchAllConversations, fetchInboxes } from "@/lib/chatwoot-api";
 import { getKommoPipelines, getPipelineById } from "@/lib/kommo-structure";
 import {
   BoardBreakdownItem,
@@ -9,10 +9,13 @@ import {
   ChatwootInbox,
   KanbanCardData,
   KanbanColumnData,
+  KommoPipeline,
 } from "@/lib/types";
 
 const FALLBACK_STAGE_ID = "stage:unmapped";
 const BOARD_CACHE_TTL_MS = 20_000;
+const WON_STAGE_ID = 142;
+const LOST_STAGE_ID = 143;
 const HIGHLIGHT_PRIORITY: Array<{
   matcher: RegExp;
   label: string;
@@ -38,6 +41,7 @@ const boardCache = new Map<
     value: BoardResponse;
   }
 >();
+
 function asString(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
@@ -95,6 +99,34 @@ function humanizeStatus(status: string) {
   };
 
   return map[status] ?? status;
+}
+
+function resolveStageKind(
+  status: Pick<KommoPipeline["statuses"][number], "id" | "type" | "name"> | undefined,
+  stageName?: string | null,
+): KanbanCardData["stageKind"] {
+  if (status?.id === WON_STAGE_ID) {
+    return "won";
+  }
+
+  if (status?.id === LOST_STAGE_ID) {
+    return "lost";
+  }
+
+  if (status?.type === 1) {
+    return "incoming";
+  }
+
+  const normalizedStageName = normalizeLookup(stageName ?? status?.name ?? "");
+  if (normalizedStageName.includes("ganha")) {
+    return "won";
+  }
+
+  if (normalizedStageName.includes("perdida") || normalizedStageName.includes("perdido")) {
+    return "lost";
+  }
+
+  return "open";
 }
 
 function buildConversationUrl(
@@ -227,6 +259,8 @@ function resolveCard(
     highlights,
     pipelineName,
     stageName,
+    stageId: null,
+    stageKind: "unmapped",
     stageColor: "#94a3b8",
     inboxName: inbox?.name ?? `Inbox ${conversation.inbox_id}`,
     channelLabel,
@@ -251,6 +285,20 @@ function resolveCard(
   };
 
   return card;
+}
+
+function stageByName(pipeline: KommoPipeline, stageName: string | null) {
+  if (!stageName) {
+    return null;
+  }
+
+  return (
+    pipeline.statuses.find((status) => status.name === stageName) ?? null
+  );
+}
+
+function sumCardValues(cards: KanbanCardData[]) {
+  return cards.reduce((sum, card) => sum + (card.price ?? 0), 0);
 }
 
 function toBreakdown(source: Map<string, number>, labelResolver?: (key: string) => string) {
@@ -279,16 +327,40 @@ export async function buildBoardResponse(
     }
   }
 
-  const [conversations, inboxes] = await Promise.all([
-    fetchPipelineConversations(selectedPipeline.name, force),
+  const [allConversations, inboxes] = await Promise.all([
+    fetchAllConversations(force),
     fetchInboxes(force),
   ]);
+  const conversations = allConversations.filter(
+    (conversation) => conversation.custom_attributes?.kommo_pipeline === selectedPipeline.name,
+  );
 
   const inboxById = new Map(inboxes.map((inbox) => [inbox.id, inbox]));
+  const pipelineSummaryByName = new Map(
+    pipelines.map((pipeline) => [
+      pipeline.name,
+      {
+        id: pipeline.id,
+        name: pipeline.name,
+        isMain: pipeline.isMain,
+        stageCount: pipeline.statuses.length,
+        totalCards: 0,
+        totalValue: 0,
+        wonCards: 0,
+        wonValue: 0,
+        lostCards: 0,
+        lostValue: 0,
+      },
+    ]),
+  );
   const columns = selectedPipeline.statuses.map<KanbanColumnData>((status) => ({
     id: `stage:${status.id}`,
     title: status.name,
     color: status.color,
+    stageId: status.id,
+    stageKind: resolveStageKind(status),
+    cardCount: 0,
+    totalValue: 0,
     cards: [],
   }));
   const columnByTitle = new Map(columns.map((column) => [column.title, column]));
@@ -296,10 +368,50 @@ export async function buildBoardResponse(
     id: FALLBACK_STAGE_ID,
     title: "Sem etapa",
     color: "#94a3b8",
+    stageId: null,
+    stageKind: "unmapped",
+    cardCount: 0,
+    totalValue: 0,
     cards: [],
   };
   const channelCounts = new Map<string, number>();
   const statusCounts = new Map<string, number>();
+  let overallCards = 0;
+  let overallValue = 0;
+
+  for (const conversation of allConversations) {
+    const pipelineName = asString(conversation.custom_attributes?.kommo_pipeline);
+    if (!pipelineName) {
+      continue;
+    }
+
+    const summary = pipelineSummaryByName.get(pipelineName);
+    const pipeline = pipelines.find((item) => item.name === pipelineName);
+
+    if (!summary || !pipeline) {
+      continue;
+    }
+
+    const price = asNumber(conversation.custom_attributes?.kommo_lead_price) ?? 0;
+    const stageName = asString(conversation.custom_attributes?.kommo_stage);
+    const stage = stageByName(pipeline, stageName);
+    const stageKind = resolveStageKind(stage ?? undefined, stageName);
+
+    summary.totalCards += 1;
+    summary.totalValue += price;
+    overallCards += 1;
+    overallValue += price;
+
+    if (stageKind === "won") {
+      summary.wonCards += 1;
+      summary.wonValue += price;
+    }
+
+    if (stageKind === "lost") {
+      summary.lostCards += 1;
+      summary.lostValue += price;
+    }
+  }
 
   for (const conversation of conversations) {
     const card = resolveCard(
@@ -308,12 +420,14 @@ export async function buildBoardResponse(
       trimTrailingSlash(env.CHATWOOT_BASE_URL),
     );
     const targetColumn = columnByTitle.get(card.stageName) ?? fallbackColumn;
-    const status = selectedPipeline.statuses.find(
-      (pipelineStatus) => pipelineStatus.name === targetColumn.title,
-    );
+    const status = stageByName(selectedPipeline, targetColumn.title);
 
     card.stageColor = status?.color ?? fallbackColumn.color;
+    card.stageId = status?.id ?? targetColumn.stageId;
+    card.stageKind =
+      status ? resolveStageKind(status) : targetColumn.stageKind;
     targetColumn.cards.push(card);
+    targetColumn.totalValue += card.price ?? 0;
 
     channelCounts.set(
       card.channelLabel,
@@ -327,25 +441,40 @@ export async function buildBoardResponse(
 
   for (const column of columns) {
     column.cards.sort((left, right) => right.lastActivityAt - left.lastActivityAt);
+    column.cardCount = column.cards.length;
+    column.totalValue = sumCardValues(column.cards);
   }
 
   fallbackColumn.cards.sort(
     (left, right) => right.lastActivityAt - left.lastActivityAt,
   );
+  fallbackColumn.cardCount = fallbackColumn.cards.length;
+  fallbackColumn.totalValue = sumCardValues(fallbackColumn.cards);
 
   const finalColumns = fallbackColumn.cards.length
     ? [...columns, fallbackColumn]
     : columns;
+  const totalValue = finalColumns.reduce((sum, column) => sum + column.totalValue, 0);
+  const wonColumns = finalColumns.filter((column) => column.stageKind === "won");
+  const lostColumns = finalColumns.filter((column) => column.stageKind === "lost");
 
   const response: BoardResponse = {
     accountId: env.CHATWOOT_ACCOUNT_ID,
     chatwootBaseUrl: trimTrailingSlash(env.CHATWOOT_BASE_URL),
     fetchedAt: new Date().toISOString(),
     pipelines: pipelines.map((pipeline) => ({
-      id: pipeline.id,
-      name: pipeline.name,
-      isMain: pipeline.isMain,
-      stageCount: pipeline.statuses.length,
+      ...(pipelineSummaryByName.get(pipeline.name) ?? {
+        id: pipeline.id,
+        name: pipeline.name,
+        isMain: pipeline.isMain,
+        stageCount: pipeline.statuses.length,
+        totalCards: 0,
+        totalValue: 0,
+        wonCards: 0,
+        wonValue: 0,
+        lostCards: 0,
+        lostValue: 0,
+      }),
     })),
     selectedPipeline: {
       id: selectedPipeline.id,
@@ -360,6 +489,13 @@ export async function buildBoardResponse(
           sum + column.cards.filter((card) => card.unreadCount > 0).length,
         0,
       ),
+      totalValue,
+      wonCards: wonColumns.reduce((sum, column) => sum + column.cardCount, 0),
+      wonValue: wonColumns.reduce((sum, column) => sum + column.totalValue, 0),
+      lostCards: lostColumns.reduce((sum, column) => sum + column.cardCount, 0),
+      lostValue: lostColumns.reduce((sum, column) => sum + column.totalValue, 0),
+      overallCards,
+      overallValue,
       channelBreakdown: toBreakdown(channelCounts),
       statusBreakdown: toBreakdown(statusCounts),
     },

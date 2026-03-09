@@ -79,6 +79,8 @@ export interface KanbanCardData {
   highlights: KanbanCardHighlight[];
   pipelineName: string;
   stageName: string;
+  stageId: number | null;
+  stageKind: "incoming" | "open" | "won" | "lost" | "unmapped";
   stageColor: string;
   inboxName: string;
   channelLabel: string;
@@ -110,6 +112,10 @@ export interface KanbanColumnData {
   id: string;
   title: string;
   color: string;
+  stageId: number | null;
+  stageKind: "incoming" | "open" | "won" | "lost" | "unmapped";
+  cardCount: number;
+  totalValue: number;
   cards: KanbanCardData[];
 }
 
@@ -118,6 +124,12 @@ export interface PipelineSummary {
   name: string;
   isMain: boolean;
   stageCount: number;
+  totalCards: number;
+  totalValue: number;
+  wonCards: number;
+  wonValue: number;
+  lostCards: number;
+  lostValue: number;
 }
 
 export interface BoardBreakdownItem {
@@ -130,6 +142,13 @@ export interface BoardMetrics {
   totalCards: number;
   stageCount: number;
   unreadCards: number;
+  totalValue: number;
+  wonCards: number;
+  wonValue: number;
+  lostCards: number;
+  lostValue: number;
+  overallCards: number;
+  overallValue: number;
   channelBreakdown: BoardBreakdownItem[];
   statusBreakdown: BoardBreakdownItem[];
 }

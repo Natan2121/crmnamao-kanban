@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ControlledBoard,
-  moveCard,
   type Card,
   type Column,
   type OnDragEndNotification,
@@ -26,6 +25,8 @@ interface BoardColumn extends Column<BoardCard> {
   id: string;
   color: string;
   stageName: string;
+  stageId: number | null;
+  stageKind: KanbanCardData["stageKind"];
 }
 
 interface BoardState {
@@ -39,6 +40,8 @@ function buildBoardState(payload: BoardResponse): BoardState {
       title: column.title,
       color: column.color,
       stageName: column.title,
+      stageId: column.stageId,
+      stageKind: column.stageKind,
       cards: column.cards.map((card) => ({
         id: String(card.id),
         title: card.title,
@@ -49,31 +52,9 @@ function buildBoardState(payload: BoardResponse): BoardState {
   };
 }
 
-function updateCardStage(board: BoardState, cardId: string, stageName: string) {
-  return {
-    columns: board.columns.map(
-      (column) =>
-        ({
-          ...column,
-          cards: column.cards.map((card) =>
-            card.id === cardId
-              ? {
-                  ...card,
-                  record: {
-                    ...card.record,
-                    stageName,
-                  },
-                }
-              : card,
-          ),
-        }) satisfies BoardColumn,
-    ),
-  } satisfies BoardState;
-}
-
-function formatMoney(value: number | null) {
-  if (value === null) {
-    return null;
+function formatMoney(value: number | null | undefined) {
+  if (value === null || value === undefined) {
+    return "R$ 0";
   }
 
   return new Intl.NumberFormat("pt-BR", {
@@ -81,6 +62,121 @@ function formatMoney(value: number | null) {
     currency: "BRL",
     maximumFractionDigits: value % 1 === 0 ? 0 : 2,
   }).format(value);
+}
+
+function moveCardBetweenColumns(
+  board: BoardState,
+  cardId: string,
+  destinationColumnId: string,
+  destinationPosition = 0,
+) {
+  const sourceColumnIndex = board.columns.findIndex((column) =>
+    column.cards.some((card) => card.id === cardId),
+  );
+  const destinationColumnIndex = board.columns.findIndex(
+    (column) => column.id === destinationColumnId,
+  );
+
+  if (sourceColumnIndex === -1 || destinationColumnIndex === -1) {
+    return board;
+  }
+
+  const sourceColumn = board.columns[sourceColumnIndex];
+  const destinationColumn = board.columns[destinationColumnIndex];
+  const cardIndex = sourceColumn.cards.findIndex((card) => card.id === cardId);
+
+  if (cardIndex === -1) {
+    return board;
+  }
+
+  const sourceCards = [...sourceColumn.cards];
+  const destinationCards =
+    sourceColumnIndex === destinationColumnIndex
+      ? sourceCards
+      : [...destinationColumn.cards];
+  const [card] = sourceCards.splice(cardIndex, 1);
+
+  const updatedCard: BoardCard = {
+    ...card,
+    record: {
+      ...card.record,
+      stageName: destinationColumn.stageName,
+      stageId: destinationColumn.stageId,
+      stageKind: destinationColumn.stageKind,
+      stageColor: destinationColumn.color,
+    },
+  };
+
+  const boundedPosition = Math.max(
+    0,
+    Math.min(destinationPosition, destinationCards.length),
+  );
+  destinationCards.splice(boundedPosition, 0, updatedCard);
+
+  return {
+    columns: board.columns.map((column, index) => {
+      if (index === sourceColumnIndex && index === destinationColumnIndex) {
+        return {
+          ...column,
+          cards: destinationCards,
+        } satisfies BoardColumn;
+      }
+
+      if (index === sourceColumnIndex) {
+        return {
+          ...column,
+          cards: sourceCards,
+        } satisfies BoardColumn;
+      }
+
+      if (index === destinationColumnIndex) {
+        return {
+          ...column,
+          cards: destinationCards,
+        } satisfies BoardColumn;
+      }
+
+      return column;
+    }),
+  } satisfies BoardState;
+}
+
+function summarizeBoard(board: BoardState) {
+  return board.columns.reduce(
+    (summary, column) => {
+      const columnValue = column.cards.reduce(
+        (sum, card) => sum + (card.record.price ?? 0),
+        0,
+      );
+
+      summary.totalCards += column.cards.length;
+      summary.totalValue += columnValue;
+
+      if (column.stageKind === "won") {
+        summary.wonCards += column.cards.length;
+        summary.wonValue += columnValue;
+      }
+
+      if (column.stageKind === "lost") {
+        summary.lostCards += column.cards.length;
+        summary.lostValue += columnValue;
+      }
+
+      return summary;
+    },
+    {
+      totalCards: 0,
+      totalValue: 0,
+      wonCards: 0,
+      wonValue: 0,
+      lostCards: 0,
+      lostValue: 0,
+    },
+  );
+}
+
+function columnValue(column: BoardColumn) {
+  return column.cards.reduce((sum, card) => sum + (card.record.price ?? 0), 0);
 }
 
 function formatRelativeTime(unixSeconds: number) {
@@ -211,7 +307,16 @@ export function KanbanDashboard() {
     () => findCardRecord(board, selectedCardId),
     [board, selectedCardId],
   );
+  const boardSummary = useMemo(() => summarizeBoard(board), [board]);
   const selectedDetail = selectedCard ? detailCache[selectedCard.id] ?? null : null;
+  const wonColumn = useMemo(
+    () => board.columns.find((column) => column.stageKind === "won") ?? null,
+    [board],
+  );
+  const lostColumn = useMemo(
+    () => board.columns.find((column) => column.stageKind === "lost") ?? null,
+    [board],
+  );
   const hasCompanySection =
     selectedDetail?.sections.some((section) =>
       section.title.toLowerCase().includes("empresa"),
@@ -363,14 +468,14 @@ export function KanbanDashboard() {
       }
 
       const previousBoard = board;
-      const movedBoard = moveCard(board, source, destination) as BoardState;
-      const stagedBoard = updateCardStage(
-        movedBoard,
+      const nextBoard = moveCardBetweenColumns(
+        board,
         card.id,
-        destinationColumn.stageName,
+        destinationColumn.id,
+        destination.toPosition,
       );
 
-      setBoard(stagedBoard);
+      setBoard(nextBoard);
       setMovingCardId(card.id);
       setError(null);
 
@@ -406,6 +511,66 @@ export function KanbanDashboard() {
     [appKey, board, payload, selectedPipelineId],
   );
 
+  const moveSelectedCardToOutcome = useCallback(
+    async (outcome: "won" | "lost") => {
+      if (!selectedCard || !selectedPipelineId) {
+        return;
+      }
+
+      const destinationColumn = outcome === "won" ? wonColumn : lostColumn;
+      if (!destinationColumn) {
+        setError(
+          outcome === "won"
+            ? "Este funil nao possui etapa de venda ganha."
+            : "Este funil nao possui etapa de venda perdida.",
+        );
+        return;
+      }
+
+      const previousBoard = board;
+      const nextBoard = moveCardBetweenColumns(
+        board,
+        String(selectedCard.id),
+        destinationColumn.id,
+        0,
+      );
+
+      setBoard(nextBoard);
+      setMovingCardId(String(selectedCard.id));
+      setError(null);
+
+      try {
+        const response = await fetch("/api/board/move", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-kanban-app-key": appKey,
+          },
+          body: JSON.stringify({
+            conversationId: selectedCard.id,
+            pipelineId: selectedPipelineId,
+            stageName: destinationColumn.stageName,
+          }),
+        });
+        const result = (await response.json()) as { error?: string };
+
+        if (!response.ok) {
+          throw new Error(result.error ?? "Falha ao mover o card.");
+        }
+      } catch (moveError) {
+        setBoard(previousBoard);
+        setError(
+          moveError instanceof Error
+            ? moveError.message
+            : "Falha ao mover o card.",
+        );
+      } finally {
+        setMovingCardId(null);
+      }
+    },
+    [appKey, board, lostColumn, selectedCard, selectedPipelineId, wonColumn],
+  );
+
   return (
     <main className="min-h-screen bg-slate-100 text-slate-950">
       <div className="mx-auto flex max-w-[1880px] flex-col gap-4 px-4 py-4 md:px-5">
@@ -434,10 +599,26 @@ export function KanbanDashboard() {
                   <option key={pipeline.id} value={pipeline.id}>
                     {pipeline.name}
                     {pipeline.isMain ? " (principal)" : ""}
+                    {` • ${formatMoney(pipeline.totalValue)}`}
                   </option>
                 ))}
               </select>
             </label>
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
+            <div className="rounded-full bg-slate-100 px-3 py-2 text-xs font-medium text-slate-700">
+              Funil: <span className="font-semibold text-slate-950">{formatMoney(boardSummary.totalValue)}</span> <span className="text-slate-500">({boardSummary.totalCards} cards)</span>
+            </div>
+            <div className="rounded-full bg-emerald-100 px-3 py-2 text-xs font-medium text-emerald-900">
+              Ganha: <span className="font-semibold">{formatMoney(boardSummary.wonValue)}</span> <span className="text-emerald-800/80">({boardSummary.wonCards})</span>
+            </div>
+            <div className="rounded-full bg-rose-100 px-3 py-2 text-xs font-medium text-rose-900">
+              Perdida: <span className="font-semibold">{formatMoney(boardSummary.lostValue)}</span> <span className="text-rose-800/80">({boardSummary.lostCards})</span>
+            </div>
+            <div className="rounded-full bg-sky-100 px-3 py-2 text-xs font-medium text-sky-900">
+              Geral: <span className="font-semibold">{formatMoney(payload?.metrics.overallValue)}</span> <span className="text-sky-800/80">({payload?.metrics.overallCards ?? 0} cards)</span>
+            </div>
           </div>
         </header>
 
@@ -461,7 +642,7 @@ export function KanbanDashboard() {
                 disableColumnDrag
                 onCardDragEnd={handleCardDragEnd}
                 renderCard={(card, options) => {
-                  const price = formatMoney(card.record.price);
+                  const price = formatMoney(card.record.price ?? 0);
                   const isMoving = movingCardId === card.id;
                   const isSelected = selectedCardId === card.record.id;
 
@@ -537,11 +718,9 @@ export function KanbanDashboard() {
                             {card.record.assigneeName}
                           </span>
                         ) : null}
-                        {price ? (
-                          <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-medium text-emerald-800">
-                            {price}
-                          </span>
-                        ) : null}
+                        <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-medium text-emerald-800">
+                          Valor {price}
+                        </span>
                       </div>
 
                       <div className="mt-auto flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
@@ -590,6 +769,9 @@ export function KanbanDashboard() {
                           <p className="text-xs text-slate-500">
                             {typedColumn.cards.length} card
                             {typedColumn.cards.length === 1 ? "" : "s"}
+                          </p>
+                          <p className="text-xs font-semibold text-slate-900">
+                            {formatMoney(columnValue(typedColumn))}
                           </p>
                         </div>
                       </div>
@@ -659,21 +841,41 @@ export function KanbanDashboard() {
                 <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold text-slate-700">
                   {selectedCard.conversationStatus}
                 </span>
-                {selectedCard.price !== null ? (
-                  <span className="rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-semibold text-emerald-800">
-                    {formatMoney(selectedCard.price)}
-                  </span>
-                ) : null}
+                <span className="rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-semibold text-emerald-800">
+                  Valor {formatMoney(selectedCard.price ?? 0)}
+                </span>
               </div>
 
-              <a
-                className="mt-4 inline-flex rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-800 transition hover:border-slate-950 hover:bg-slate-950 hover:text-white"
-                href={selectedCard.openUrl}
-                rel="noreferrer"
-                target="_blank"
-              >
-                Abrir conversa completa
-              </a>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  className="rounded-full bg-emerald-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={!wonColumn || movingCardId === String(selectedCard.id) || selectedCard.stageKind === "won"}
+                  onClick={() => {
+                    void moveSelectedCardToOutcome("won");
+                  }}
+                  type="button"
+                >
+                  Venda ganha
+                </button>
+                <button
+                  className="rounded-full bg-rose-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={!lostColumn || movingCardId === String(selectedCard.id) || selectedCard.stageKind === "lost"}
+                  onClick={() => {
+                    void moveSelectedCardToOutcome("lost");
+                  }}
+                  type="button"
+                >
+                  Venda perdida
+                </button>
+                <a
+                  className="inline-flex rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-800 transition hover:border-slate-950 hover:bg-slate-950 hover:text-white"
+                  href={selectedCard.openUrl}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  Abrir conversa completa
+                </a>
+              </div>
             </header>
 
             <div className="flex-1 overflow-y-auto px-5 py-4">

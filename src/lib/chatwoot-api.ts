@@ -129,7 +129,7 @@ export async function updateConversationCustomAttributes(
   );
 }
 
-async function fetchAllConversations(force = false) {
+export async function fetchAllConversations(force = false) {
   if (!force && conversationsCache && conversationsCache.expiresAt > Date.now()) {
     return conversationsCache.value;
   }
