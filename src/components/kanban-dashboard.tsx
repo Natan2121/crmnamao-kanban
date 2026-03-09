@@ -690,7 +690,7 @@ export function KanbanDashboard() {
                     <article
                       aria-label={`Abrir resumo de ${card.record.title}`}
                       aria-pressed={isSelected}
-                      className={`kanban-card group flex min-h-[146px] cursor-pointer flex-col gap-3 rounded-[20px] border border-slate-200 bg-white p-3 text-left shadow-sm transition ${options.dragging ? "opacity-90" : ""} ${isMoving ? "ring-2 ring-sky-300" : ""} ${isSelected ? "border-slate-950 ring-1 ring-slate-950/10" : "hover:border-slate-300 hover:shadow-md"}`}
+                      className={`kanban-card group flex min-h-[152px] cursor-pointer flex-col gap-3 rounded-[18px] border border-slate-200 bg-white p-3 text-left shadow-sm transition ${options.dragging ? "opacity-90" : ""} ${isMoving ? "ring-2 ring-sky-300" : ""} ${isSelected ? "border-slate-950 ring-1 ring-slate-950/10" : "hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"}`}
                       onClick={() => {
                         if (!options.dragging) {
                           void openCardSummary(card.record);
@@ -709,88 +709,96 @@ export function KanbanDashboard() {
                       role="button"
                       tabIndex={0}
                     >
-                      <div className="flex items-start justify-between gap-2">
+                      <div
+                        className="h-1.5 w-16 rounded-full"
+                        style={{ backgroundColor: card.record.stageColor }}
+                      />
+
+                      <div className="flex items-start justify-between gap-3">
                         <div className="flex min-w-0 items-center gap-2.5">
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-sm font-semibold text-white">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-700">
                             {initialBadge(card.record.title)}
                           </div>
-                          <div className="min-w-0">
-                            <h2 className="truncate text-sm font-semibold text-slate-950">
+                          <div className="min-w-0 flex-1">
+                            <h2 className="truncate text-[15px] font-semibold leading-tight text-slate-950">
                               {card.record.title}
                             </h2>
-                            <p className="truncate text-[11px] uppercase tracking-[0.16em] text-slate-500">
+                            <p className="mt-0.5 truncate text-[11px] text-slate-500">
                               {card.record.channelLabel} / {card.record.inboxName}
                             </p>
                           </div>
                         </div>
 
-                        {card.record.unreadCount > 0 ? (
-                          <span className="rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-900">
-                            {card.record.unreadCount}
-                          </span>
-                        ) : null}
+                        <div className="shrink-0 text-right">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                            Valor
+                          </p>
+                          <p className="mt-0.5 text-sm font-semibold text-slate-950">
+                            {price}
+                          </p>
+                        </div>
                       </div>
 
-                      {card.record.highlights.length ? (
-                        <div className="grid gap-1.5">
-                          {card.record.highlights.slice(0, 4).map((highlight) => (
-                            <div
-                              key={`${card.id}-${highlight.label}`}
-                              className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-2.5 py-2"
-                            >
-                              <span className="truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-                                {highlight.label}
-                              </span>
-                              <span className="truncate text-xs font-medium text-slate-800">
-                                {highlight.value}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
-
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-1.5">
                         <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-700">
                           {card.record.conversationStatus}
                         </span>
+                        {card.record.unreadCount > 0 ? (
+                          <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold text-amber-900">
+                            {card.record.unreadCount} nova
+                            {card.record.unreadCount === 1 ? "" : "s"}
+                          </span>
+                        ) : null}
                         {card.record.assigneeName ? (
                           <span className="rounded-full bg-sky-100 px-2.5 py-1 text-[11px] font-medium text-sky-800">
                             {card.record.assigneeName}
                           </span>
                         ) : null}
-                        <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-900">
-                          Na etapa {stageDuration}
-                        </span>
-                        <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-medium text-emerald-800">
-                          Valor {price}
-                        </span>
                       </div>
 
-                      <div className="mt-auto flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
-                        <div>
-                          <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-400">
+                      {card.record.highlights.length ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          {card.record.highlights.slice(0, 4).map((highlight) => (
+                            <span
+                              key={`${card.id}-${highlight.label}`}
+                              className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[11px] text-slate-700"
+                            >
+                              <span className="truncate font-semibold text-slate-500">
+                                {highlight.label}
+                              </span>
+                              <span className="truncate font-medium text-slate-800">
+                                {highlight.value}
+                              </span>
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+
+                      <div className="mt-auto grid grid-cols-3 gap-2 border-t border-slate-100 pt-3 text-[11px]">
+                        <div className="min-w-0 rounded-2xl bg-slate-50 px-2.5 py-2">
+                          <p className="font-semibold uppercase tracking-[0.12em] text-slate-400">
+                            Na etapa
+                          </p>
+                          <p className="mt-1 truncate text-[12px] font-medium text-slate-800">
+                            {stageDuration}
+                          </p>
+                        </div>
+                        <div className="min-w-0 rounded-2xl bg-slate-50 px-2.5 py-2">
+                          <p className="font-semibold uppercase tracking-[0.12em] text-slate-400">
                             Atividade
                           </p>
-                          <p className="mt-1 text-sm text-slate-700">
+                          <p className="mt-1 truncate text-[12px] font-medium text-slate-800">
                             {formatRelativeTime(card.record.lastActivityAt)}
                           </p>
                         </div>
-                        <div className="text-right">
-                          <p className="text-[11px] text-slate-500">
-                            Lead {card.record.leadId ?? card.record.id}
+                        <div className="min-w-0 rounded-2xl bg-slate-50 px-2.5 py-2">
+                          <p className="font-semibold uppercase tracking-[0.12em] text-slate-400">
+                            Lead
+                          </p>
+                          <p className="mt-1 truncate text-[12px] font-medium text-slate-800">
+                            {card.record.leadId ?? card.record.id}
                           </p>
                         </div>
-                        <a
-                          className="rounded-full border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-slate-800 transition hover:border-slate-950 hover:bg-slate-950 hover:text-white"
-                          href={card.record.openUrl}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                          }}
-                          rel="noreferrer"
-                          target="_blank"
-                        >
-                          Abrir
-                        </a>
                       </div>
                     </article>
                   );
@@ -799,22 +807,24 @@ export function KanbanDashboard() {
                   const typedColumn = column as BoardColumn;
 
                   return (
-                    <header className="mb-3 flex items-center justify-between gap-3 rounded-[20px] border border-slate-200 bg-slate-50 px-3 py-3">
-                      <div className="flex min-w-0 items-center gap-3">
-                        <span
-                          className="h-3 w-3 shrink-0 rounded-full"
-                          style={{ backgroundColor: typedColumn.color }}
-                        />
+                    <header className="sticky top-[94px] z-10 -mx-1 mb-3 rounded-[18px] border border-slate-200 bg-white/96 px-3 py-3 shadow-sm backdrop-blur md:top-[102px]">
+                      <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <h3 className="truncate text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-700">
-                            {typedColumn.title}
-                          </h3>
-                          <p className="text-xs text-slate-500">
-                            {typedColumn.cards.length} card
-                            {typedColumn.cards.length === 1 ? "" : "s"}
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="h-2.5 w-2.5 shrink-0 rounded-full"
+                              style={{ backgroundColor: typedColumn.color }}
+                            />
+                            <h3 className="truncate text-sm font-semibold text-slate-950">
+                              {typedColumn.title}
+                            </h3>
+                          </div>
+                          <p className="mt-1 text-xs font-medium text-slate-500">
+                            Total {formatMoney(columnValue(typedColumn))}
                           </p>
-                          <p className="text-xs font-semibold text-slate-900">
-                            {formatMoney(columnValue(typedColumn))}
+                          <p className="mt-0.5 text-[11px] text-slate-400">
+                            {typedColumn.cards.length} negocio
+                            {typedColumn.cards.length === 1 ? "" : "s"}
                           </p>
                         </div>
                       </div>
