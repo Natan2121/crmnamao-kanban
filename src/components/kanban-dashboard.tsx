@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ControlledBoard,
   moveCard,
@@ -10,17 +10,6 @@ import {
 } from "@caldwell619/react-kanban";
 
 import { BoardResponse, KanbanCardData } from "@/lib/types";
-
-interface DashboardAppPayload {
-  event?: string;
-  data?: {
-    currentAgent?: {
-      id?: number;
-      name?: string;
-      email?: string;
-    };
-  };
-}
 
 interface BoardCard extends Card {
   id: string;
@@ -117,28 +106,6 @@ function initialBadge(name: string) {
   return clean ? clean.charAt(0).toUpperCase() : "?";
 }
 
-function StatPill({
-  label,
-  value,
-  detail,
-}: {
-  label: string;
-  value: string;
-  detail: string;
-}) {
-  return (
-    <article className="min-w-[150px] rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-        {label}
-      </p>
-      <p className="mt-1 text-lg font-semibold leading-none text-slate-950">
-        {value}
-      </p>
-      <p className="mt-1 text-xs text-slate-600">{detail}</p>
-    </article>
-  );
-}
-
 function LoadingBoard() {
   return (
     <div className="grid min-w-max grid-flow-col gap-4 overflow-x-auto pb-3">
@@ -169,18 +136,6 @@ function resolveAppKey() {
   return hash.get("appKey") ?? "";
 }
 
-function resolveParentOrigin() {
-  if (typeof window === "undefined" || !document.referrer) {
-    return null;
-  }
-
-  try {
-    return new URL(document.referrer).origin;
-  } catch {
-    return null;
-  }
-}
-
 export function KanbanDashboard() {
   const [payload, setPayload] = useState<BoardResponse | null>(null);
   const [board, setBoard] = useState<BoardState>({ columns: [] });
@@ -190,7 +145,6 @@ export function KanbanDashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [movingCardId, setMovingCardId] = useState<string | null>(null);
-  const [agentName, setAgentName] = useState<string | null>(null);
   const [appKey, setAppKey] = useState("");
 
   const loadBoard = useCallback(async (pipelineId?: number | null, force = false) => {
@@ -246,40 +200,7 @@ export function KanbanDashboard() {
   }, [loadBoard]);
 
   useEffect(() => {
-    const trustedOrigin = resolveParentOrigin();
-
-    const handleMessage = (event: MessageEvent) => {
-      if (event.source !== window.parent) {
-        return;
-      }
-
-      if (trustedOrigin && event.origin !== trustedOrigin) {
-        return;
-      }
-
-      if (typeof event.data !== "string") {
-        return;
-      }
-
-      try {
-        const parsed = JSON.parse(event.data) as DashboardAppPayload;
-        if (parsed.event !== "appContext") {
-          return;
-        }
-
-        setAgentName(parsed.data?.currentAgent?.name ?? null);
-      } catch {
-        // Ignora mensagens que nao pertencem ao bridge do Chatwoot.
-      }
-    };
-
-    window.addEventListener("message", handleMessage);
-    window.parent?.postMessage(
-      "chatwoot-dashboard-app:fetch-info",
-      trustedOrigin ?? "*",
-    );
-
-    return () => window.removeEventListener("message", handleMessage);
+    setAppKey(resolveAppKey());
   }, []);
 
   const handlePipelineChange = useCallback(
@@ -364,88 +285,38 @@ export function KanbanDashboard() {
     [appKey, board, payload, selectedPipelineId],
   );
 
-  const selectedPipeline = useMemo(
-    () =>
-      payload?.pipelines.find(pipeline => pipeline.id === selectedPipelineId) ?? null,
-    [payload, selectedPipelineId],
-  );
-
   return (
     <main className="min-h-screen bg-slate-100 text-slate-950">
       <div className="mx-auto flex max-w-[1880px] flex-col gap-4 px-4 py-4 md:px-5">
-        <header className="sticky top-0 z-20 rounded-[28px] border border-slate-200 bg-white/95 p-4 shadow-sm backdrop-blur">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <header className="sticky top-3 z-20 rounded-[22px] border border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="min-w-0">
               <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
                 CRMnaMao
               </p>
-              <h1 className="mt-1 font-[family:var(--font-display)] text-3xl leading-none text-slate-950">
-                Kanban
+              <h1 className="mt-1 font-[family:var(--font-display)] text-2xl leading-none text-slate-950">
+                Funis
               </h1>
-              <p className="mt-2 text-sm text-slate-600">
-                Quadro principal conectado as conversas do Chatwoot.
-              </p>
             </div>
 
-            <div className="flex flex-col gap-3 md:flex-row md:items-end">
-              <label className="flex min-w-[240px] flex-col gap-1.5 text-sm text-slate-600">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  Funil
-                </span>
-                <select
-                  className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-900 outline-none transition focus:border-sky-400"
-                  onChange={handlePipelineChange}
-                  value={selectedPipelineId ?? undefined}
-                >
-                  {payload?.pipelines.map(pipeline => (
-                    <option key={pipeline.id} value={pipeline.id}>
-                      {pipeline.name}
-                      {pipeline.isMain ? " (principal)" : ""}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <button
-                className="h-11 rounded-2xl border border-slate-950 bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={isLoading}
-                onClick={() => void loadBoard(selectedPipelineId, true)}
-                type="button"
+            <label className="flex min-w-[220px] flex-col gap-1 text-sm text-slate-600 md:max-w-[360px]">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Funil
+              </span>
+              <select
+                className="h-10 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-900 outline-none transition focus:border-sky-400 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={isLoading || !payload?.pipelines.length}
+                onChange={handlePipelineChange}
+                value={selectedPipelineId ?? undefined}
               >
-                {isLoading ? "Atualizando..." : "Atualizar"}
-              </button>
-            </div>
-          </div>
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            <StatPill
-              label="Cards"
-              value={String(payload?.metrics.totalCards ?? 0)}
-              detail={
-                selectedPipeline
-                  ? `${selectedPipeline.stageCount} etapas em ${selectedPipeline.name}`
-                  : "Sem funil carregado"
-              }
-            />
-            <StatPill
-              label="Nao lidas"
-              value={String(payload?.metrics.unreadCards ?? 0)}
-              detail="Conversas pendentes"
-            />
-            <StatPill
-              label="Canal"
-              value={payload?.metrics.channelBreakdown[0]?.label ?? "Sem dado"}
-              detail="Canal dominante"
-            />
-            <StatPill
-              label="Ultima sync"
-              value={
-                payload?.fetchedAt
-                  ? new Date(payload.fetchedAt).toLocaleTimeString("pt-BR")
-                  : "--:--"
-              }
-              detail={agentName ?? "Operacao automatica"}
-            />
+                {payload?.pipelines.map(pipeline => (
+                  <option key={pipeline.id} value={pipeline.id}>
+                    {pipeline.name}
+                    {pipeline.isMain ? " (principal)" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
         </header>
 

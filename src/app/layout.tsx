@@ -14,8 +14,8 @@ const sans = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "CRMnaMao Kanban",
-  description: "Kanban operacional do Chatwoot conectado aos canais reais.",
+  title: "CRMnaMao Funis",
+  description: "Quadro operacional de funis conectado ao Chatwoot.",
 };
 
 export default function RootLayout({
