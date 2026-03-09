@@ -1,9 +1,12 @@
+import contactHighlights from "@/data/kommo-contact-highlights.json";
 import { getServerEnv, trimTrailingSlash } from "@/lib/env";
 import { fetchInboxes, fetchPipelineConversations } from "@/lib/chatwoot-api";
 import { getKommoPipelines, getPipelineById } from "@/lib/kommo-structure";
 import {
   BoardBreakdownItem,
   BoardResponse,
+  ChatwootContactMeta,
+  KanbanCardHighlight,
   ChatwootConversation,
   ChatwootInbox,
   KanbanCardData,
@@ -11,17 +14,19 @@ import {
 } from "@/lib/types";
 
 const FALLBACK_STAGE_ID = "stage:unmapped";
+const BOARD_CACHE_TTL_MS = 20_000;
+
+const boardCache = new Map<
+  number,
+  {
+    expiresAt: number;
+    value: BoardResponse;
+  }
+>();
+const contactHighlightMap = contactHighlights as Record<string, KanbanCardHighlight[]>;
 
 function asString(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function isImportedDump(value: string | null | undefined) {
-  if (!value) {
-    return false;
-  }
-
-  return /^(Kommo Timeline|Lead Snapshot)/i.test(value.trim());
 }
 
 function asNumber(value: unknown) {
@@ -86,6 +91,16 @@ function buildConversationUrl(
   return `${normalizedBaseUrl}${relativePath}`;
 }
 
+function resolveContactHighlights(sender?: ChatwootContactMeta) {
+  const sourceId = asString(sender?.custom_attributes?.kommo_source_id);
+
+  if (!sourceId) {
+    return [];
+  }
+
+  return contactHighlightMap[sourceId] ?? [];
+}
+
 function resolveCard(
   conversation: ChatwootConversation,
   inboxById: Map<number, ChatwootInbox>,
@@ -100,28 +115,22 @@ function resolveCard(
     conversation.meta?.channel ?? inbox?.channel_type,
   );
   const leadId = asString(customAttributes.kommo_lead_id);
+  const highlights = resolveContactHighlights(sender);
   const title =
     asString(sender?.name) ??
     asString(customAttributes.kommo_lead_proposta) ??
     `Lead #${leadId ?? conversation.id}`;
-  const messageCandidates = [
-    conversation.last_non_activity_message?.content,
-    conversation.messages?.[0]?.content,
-  ];
-  const latestMessage = compactText(
-    messageCandidates.find((candidate) => candidate && !isImportedDump(candidate)),
-    140,
-  );
   const fallbackDescription =
     asString(customAttributes.kommo_lead_proposta) ??
     asString(customAttributes.kommo_lead_comentarios) ??
     asString(customAttributes.kommo_lead_tags) ??
-    "Sem mensagem recente";
+    "";
 
   const card: KanbanCardData = {
     id: conversation.id,
     title,
-    description: latestMessage || compactText(fallbackDescription, 140),
+    description: compactText(fallbackDescription, 88),
+    highlights,
     pipelineName,
     stageName,
     stageColor: "#94a3b8",
@@ -167,6 +176,14 @@ export async function buildBoardResponse(
   const env = getServerEnv();
   const pipelines = getKommoPipelines();
   const selectedPipeline = getPipelineById(pipelineId);
+  const cacheKey = selectedPipeline.id;
+
+  if (!force) {
+    const cachedBoard = boardCache.get(cacheKey);
+    if (cachedBoard && cachedBoard.expiresAt > Date.now()) {
+      return cachedBoard.value;
+    }
+  }
 
   const [conversations, inboxes] = await Promise.all([
     fetchPipelineConversations(selectedPipeline.name, force),
@@ -226,7 +243,7 @@ export async function buildBoardResponse(
     ? [...columns, fallbackColumn]
     : columns;
 
-  return {
+  const response: BoardResponse = {
     accountId: env.CHATWOOT_ACCOUNT_ID,
     chatwootBaseUrl: trimTrailingSlash(env.CHATWOOT_BASE_URL),
     fetchedAt: new Date().toISOString(),
@@ -253,4 +270,15 @@ export async function buildBoardResponse(
       statusBreakdown: toBreakdown(statusCounts),
     },
   };
+
+  boardCache.set(cacheKey, {
+    expiresAt: Date.now() + BOARD_CACHE_TTL_MS,
+    value: response,
+  });
+
+  return response;
+}
+
+export function invalidateBoardCache() {
+  boardCache.clear();
 }

@@ -41,12 +41,12 @@ interface BoardState {
 
 function buildBoardState(payload: BoardResponse): BoardState {
   return {
-    columns: payload.columns.map((column) => ({
+    columns: payload.columns.map(column => ({
       id: column.id,
       title: column.title,
       color: column.color,
       stageName: column.title,
-      cards: column.cards.map((card) => ({
+      cards: column.cards.map(card => ({
         id: String(card.id),
         title: card.title,
         description: card.description,
@@ -59,10 +59,10 @@ function buildBoardState(payload: BoardResponse): BoardState {
 function updateCardStage(board: BoardState, cardId: string, stageName: string) {
   return {
     columns: board.columns.map(
-      (column) =>
+      column =>
         ({
           ...column,
-          cards: column.cards.map((card) =>
+          cards: column.cards.map(card =>
             card.id === cardId
               ? {
                   ...card,
@@ -117,7 +117,7 @@ function initialBadge(name: string) {
   return clean ? clean.charAt(0).toUpperCase() : "?";
 }
 
-function MetricCard({
+function StatPill({
   label,
   value,
   detail,
@@ -127,12 +127,14 @@ function MetricCard({
   detail: string;
 }) {
   return (
-    <article className="rounded-[22px] border border-white/60 bg-white/80 p-4 shadow-[0_18px_45px_rgba(15,23,42,0.08)] backdrop-blur">
-      <p className="text-xs font-medium uppercase tracking-[0.24em] text-slate-500">
+    <article className="min-w-[150px] rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
         {label}
       </p>
-      <p className="mt-3 text-3xl font-semibold text-slate-950">{value}</p>
-      <p className="mt-2 text-sm text-slate-600">{detail}</p>
+      <p className="mt-1 text-lg font-semibold leading-none text-slate-950">
+        {value}
+      </p>
+      <p className="mt-1 text-xs text-slate-600">{detail}</p>
     </article>
   );
 }
@@ -140,16 +142,16 @@ function MetricCard({
 function LoadingBoard() {
   return (
     <div className="grid min-w-max grid-flow-col gap-4 overflow-x-auto pb-3">
-      {Array.from({ length: 5 }).map((_, columnIndex) => (
+      {Array.from({ length: 4 }).map((_, columnIndex) => (
         <div
           key={columnIndex}
-          className="flex h-[620px] w-[320px] flex-col gap-3 rounded-[28px] border border-white/60 bg-white/70 p-4 backdrop-blur"
+          className="flex h-[520px] w-[280px] flex-col gap-3 rounded-[24px] border border-slate-200 bg-white p-3"
         >
           <div className="h-5 w-40 animate-pulse rounded-full bg-slate-200" />
           {Array.from({ length: 4 }).map((__, cardIndex) => (
             <div
               key={cardIndex}
-              className="h-36 animate-pulse rounded-[22px] bg-slate-100"
+              className="h-28 animate-pulse rounded-[18px] bg-slate-100"
             />
           ))}
         </div>
@@ -311,7 +313,7 @@ export function KanbanDashboard() {
       }
 
       const destinationColumn = board.columns.find(
-        (column) => column.id === destination.toColumnId,
+        column => column.id === destination.toColumnId,
       );
 
       if (!destinationColumn || destinationColumn.id === "stage:unmapped") {
@@ -364,41 +366,38 @@ export function KanbanDashboard() {
 
   const selectedPipeline = useMemo(
     () =>
-      payload?.pipelines.find((pipeline) => pipeline.id === selectedPipelineId) ??
-      null,
+      payload?.pipelines.find(pipeline => pipeline.id === selectedPipelineId) ?? null,
     [payload, selectedPipelineId],
   );
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.95),_rgba(224,242,254,0.9)_35%,_rgba(248,250,252,1)_70%)] text-slate-950">
-      <div className="mx-auto flex max-w-[1880px] flex-col gap-6 px-4 py-5 md:px-6">
-        <header className="overflow-hidden rounded-[34px] border border-white/70 bg-[linear-gradient(135deg,_rgba(255,255,255,0.9),_rgba(255,247,237,0.92)_40%,_rgba(224,242,254,0.95))] p-6 shadow-[0_30px_80px_rgba(15,23,42,0.12)]">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-            <div className="max-w-4xl">
-              <p className="text-xs font-medium uppercase tracking-[0.32em] text-slate-500">
-                CRMnaMao Kanban
+    <main className="min-h-screen bg-slate-100 text-slate-950">
+      <div className="mx-auto flex max-w-[1880px] flex-col gap-4 px-4 py-4 md:px-5">
+        <header className="sticky top-0 z-20 rounded-[28px] border border-slate-200 bg-white/95 p-4 shadow-sm backdrop-blur">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+                CRMnaMao
               </p>
-              <h1 className="mt-3 font-[family:var(--font-display)] text-4xl leading-none text-slate-950 md:text-6xl">
-                Funil vivo conectado nas conversas.
+              <h1 className="mt-1 font-[family:var(--font-display)] text-3xl leading-none text-slate-950">
+                Kanban
               </h1>
-              <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-600 md:text-base">
-                Cada card representa uma conversa real do Chatwoot. Ao mover de
-                coluna, o app atualiza a etapa importada do Kommo sem quebrar o
-                canal original.
+              <p className="mt-2 text-sm text-slate-600">
+                Quadro principal conectado as conversas do Chatwoot.
               </p>
             </div>
 
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <label className="flex min-w-[240px] flex-col gap-2 text-sm text-slate-600">
-                <span className="text-xs font-medium uppercase tracking-[0.24em] text-slate-500">
-                  Funil ativo
+            <div className="flex flex-col gap-3 md:flex-row md:items-end">
+              <label className="flex min-w-[240px] flex-col gap-1.5 text-sm text-slate-600">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Funil
                 </span>
                 <select
-                  className="rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 text-sm font-medium text-slate-900 shadow-sm outline-none transition focus:border-sky-400"
+                  className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-900 outline-none transition focus:border-sky-400"
                   onChange={handlePipelineChange}
                   value={selectedPipelineId ?? undefined}
                 >
-                  {payload?.pipelines.map((pipeline) => (
+                  {payload?.pipelines.map(pipeline => (
                     <option key={pipeline.id} value={pipeline.id}>
                       {pipeline.name}
                       {pipeline.isMain ? " (principal)" : ""}
@@ -408,48 +407,44 @@ export function KanbanDashboard() {
               </label>
 
               <button
-                className="rounded-2xl border border-slate-300 bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                className="h-11 rounded-2xl border border-slate-950 bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={isLoading}
                 onClick={() => void loadBoard(selectedPipelineId, true)}
                 type="button"
               >
-                {isLoading ? "Atualizando..." : "Atualizar quadro"}
+                {isLoading ? "Atualizando..." : "Atualizar"}
               </button>
             </div>
           </div>
 
-          <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <MetricCard
+          <div className="mt-4 flex flex-wrap gap-2">
+            <StatPill
               label="Cards"
               value={String(payload?.metrics.totalCards ?? 0)}
               detail={
                 selectedPipeline
-                  ? `${selectedPipeline.stageCount} etapas no funil ${selectedPipeline.name}`
+                  ? `${selectedPipeline.stageCount} etapas em ${selectedPipeline.name}`
                   : "Sem funil carregado"
               }
             />
-            <MetricCard
+            <StatPill
               label="Nao lidas"
               value={String(payload?.metrics.unreadCards ?? 0)}
-              detail="Conversas com mensagens pendentes de leitura"
+              detail="Conversas pendentes"
             />
-            <MetricCard
-              label="Canais"
-              value={String(payload?.metrics.channelBreakdown.length ?? 0)}
-              detail={
-                payload?.metrics.channelBreakdown[0]
-                  ? `Canal dominante: ${payload.metrics.channelBreakdown[0].label}`
-                  : "Nenhum canal mapeado"
-              }
+            <StatPill
+              label="Canal"
+              value={payload?.metrics.channelBreakdown[0]?.label ?? "Sem dado"}
+              detail="Canal dominante"
             />
-            <MetricCard
-              label="Operacao"
-              value={agentName ?? "Autonomo"}
-              detail={
+            <StatPill
+              label="Ultima sync"
+              value={
                 payload?.fetchedAt
-                  ? `Base sincronizada ${new Date(payload.fetchedAt).toLocaleTimeString("pt-BR")}`
-                  : "Aguardando dados"
+                  ? new Date(payload.fetchedAt).toLocaleTimeString("pt-BR")
+                  : "--:--"
               }
+              detail={agentName ?? "Operacao automatica"}
             />
           </div>
         </header>
@@ -460,7 +455,7 @@ export function KanbanDashboard() {
           </section>
         ) : null}
 
-        <section className="rounded-[32px] border border-white/70 bg-white/70 p-3 shadow-[0_24px_70px_rgba(15,23,42,0.08)] backdrop-blur md:p-5">
+        <section className="rounded-[28px] border border-slate-200 bg-white p-3 shadow-sm md:p-4">
           {isLoading ? (
             <LoadingBoard />
           ) : (
@@ -479,102 +474,108 @@ export function KanbanDashboard() {
 
                   return (
                     <article
-                      className={`kanban-card group flex min-h-[214px] flex-col gap-4 rounded-[24px] border border-slate-200/90 bg-white p-4 shadow-[0_18px_40px_rgba(15,23,42,0.08)] transition ${options.dragging ? "opacity-90" : ""} ${isMoving ? "ring-2 ring-sky-300" : ""}`}
+                      className={`kanban-card group flex min-h-[156px] flex-col gap-3 rounded-[20px] border border-slate-200 bg-white p-3 shadow-sm transition ${options.dragging ? "opacity-90" : ""} ${isMoving ? "ring-2 ring-sky-300" : ""}`}
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex min-w-0 items-center gap-3">
-                          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-sm font-semibold text-white">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-sm font-semibold text-white">
                             {initialBadge(card.record.title)}
                           </div>
                           <div className="min-w-0">
-                            <h2 className="truncate text-base font-semibold text-slate-950">
+                            <h2 className="truncate text-sm font-semibold text-slate-950">
                               {card.record.title}
                             </h2>
-                            <p className="truncate text-xs uppercase tracking-[0.22em] text-slate-500">
-                              {card.record.channelLabel} • {card.record.inboxName}
+                            <p className="truncate text-[11px] uppercase tracking-[0.16em] text-slate-500">
+                              {card.record.channelLabel} / {card.record.inboxName}
                             </p>
                           </div>
                         </div>
 
                         {card.record.unreadCount > 0 ? (
-                          <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-900">
-                            {card.record.unreadCount} novas
+                          <span className="rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-900">
+                            {card.record.unreadCount}
                           </span>
                         ) : null}
                       </div>
 
-                      <p className="line-clamp-3 text-sm leading-6 text-slate-600">
-                        {card.record.description}
-                      </p>
+                      {card.record.description ? (
+                        <p className="line-clamp-2 text-sm leading-5 text-slate-600">
+                          {card.record.description}
+                        </p>
+                      ) : null}
+
+                      {card.record.highlights.length ? (
+                        <div className="grid gap-1.5">
+                          {card.record.highlights.slice(0, 3).map(highlight => (
+                            <div
+                              key={`${card.id}-${highlight.label}`}
+                              className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-2.5 py-2"
+                            >
+                              <span className="truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                                {highlight.label}
+                              </span>
+                              <span className="truncate text-xs font-medium text-slate-800">
+                                {highlight.value}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
 
                       <div className="flex flex-wrap gap-2">
-                        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-700">
                           {card.record.conversationStatus}
                         </span>
-                        {card.record.teamName ? (
-                          <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-medium text-sky-800">
-                            {card.record.teamName}
+                        {card.record.assigneeName ? (
+                          <span className="rounded-full bg-sky-100 px-2.5 py-1 text-[11px] font-medium text-sky-800">
+                            {card.record.assigneeName}
                           </span>
                         ) : null}
                         {price ? (
-                          <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-800">
+                          <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-medium text-emerald-800">
                             {price}
                           </span>
                         ) : null}
                       </div>
 
-                      <div className="mt-auto grid grid-cols-2 gap-3 text-xs text-slate-500">
+                      <div className="mt-auto flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
                         <div>
-                          <p className="font-medium uppercase tracking-[0.18em] text-slate-400">
+                          <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-400">
                             Atividade
                           </p>
                           <p className="mt-1 text-sm text-slate-700">
                             {formatRelativeTime(card.record.lastActivityAt)}
                           </p>
                         </div>
-                        <div>
-                          <p className="font-medium uppercase tracking-[0.18em] text-slate-400">
-                            Responsavel
-                          </p>
-                          <p className="mt-1 truncate text-sm text-slate-700">
-                            {card.record.assigneeName ?? "Nao atribuido"}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between border-t border-slate-100 pt-3">
-                        <div className="min-w-0">
-                          <p className="truncate text-xs text-slate-500">
-                            {card.record.contactEmail ?? card.record.contactPhone ?? "Sem email/telefone"}
-                          </p>
-                          <p className="text-xs text-slate-400">
+                        <div className="text-right">
+                          <p className="text-[11px] text-slate-500">
                             Lead {card.record.leadId ?? card.record.id}
                           </p>
                         </div>
                         <a
-                          className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-800 transition hover:border-slate-950 hover:bg-slate-950 hover:text-white"
+                          className="rounded-full border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-slate-800 transition hover:border-slate-950 hover:bg-slate-950 hover:text-white"
                           href={card.record.openUrl}
                           rel="noreferrer"
                           target="_blank"
                         >
-                          Abrir conversa
+                          Abrir
                         </a>
                       </div>
                     </article>
                   );
                 }}
-                renderColumnHeader={(column) => {
+                renderColumnHeader={column => {
                   const typedColumn = column as BoardColumn;
 
                   return (
-                    <header className="mb-3 flex items-center justify-between gap-3 rounded-[22px] border border-white/70 bg-white/80 px-4 py-4 shadow-sm">
+                    <header className="mb-3 flex items-center justify-between gap-3 rounded-[20px] border border-slate-200 bg-slate-50 px-3 py-3">
                       <div className="flex min-w-0 items-center gap-3">
                         <span
                           className="h-3 w-3 shrink-0 rounded-full"
                           style={{ backgroundColor: typedColumn.color }}
                         />
                         <div className="min-w-0">
-                          <h3 className="truncate text-sm font-semibold uppercase tracking-[0.18em] text-slate-700">
+                          <h3 className="truncate text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-700">
                             {typedColumn.title}
                           </h3>
                           <p className="text-xs text-slate-500">

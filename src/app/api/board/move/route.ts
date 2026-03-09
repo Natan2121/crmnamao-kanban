@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { invalidateBoardCache } from "@/lib/board";
 import { fetchConversation, updateConversationCustomAttributes } from "@/lib/chatwoot-api";
 import { getPipelineById } from "@/lib/kommo-structure";
 import { assertAppAccess } from "@/lib/security";
@@ -50,6 +51,8 @@ export async function POST(request: Request) {
         { status: 502 },
       );
     }
+
+    invalidateBoardCache();
 
     return NextResponse.json({
       ok: true,

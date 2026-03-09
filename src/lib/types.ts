@@ -27,6 +27,12 @@ export interface ChatwootContactMeta {
   email?: string;
   phone_number?: string;
   thumbnail?: string | null;
+  custom_attributes?: Record<string, unknown>;
+}
+
+export interface KanbanCardHighlight {
+  label: string;
+  value: string;
 }
 
 export interface ChatwootConversation {
@@ -59,6 +65,7 @@ export interface KanbanCardData {
   id: number;
   title: string;
   description: string;
+  highlights: KanbanCardHighlight[];
   pipelineName: string;
   stageName: string;
   stageColor: string;
