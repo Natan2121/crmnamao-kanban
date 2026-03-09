@@ -417,6 +417,76 @@ export function KanbanDashboard() {
     setAppKey(resolveAppKey());
   }, []);
 
+  useEffect(() => {
+    if (isLoading || typeof window === "undefined") {
+      return;
+    }
+
+    const scroller = document.querySelector<HTMLElement>(".kanban-scroll");
+    if (!scroller) {
+      return;
+    }
+
+    let frame = 0;
+
+    const syncColumnHeaders = () => {
+      frame = 0;
+      const targetTop = scroller.getBoundingClientRect().top + 12;
+
+      document.querySelectorAll<HTMLElement>(".react-kanban-column").forEach((column) => {
+        const headerHost = column.firstElementChild as HTMLElement | null;
+        if (!headerHost) {
+          return;
+        }
+
+        if (!headerHost.dataset.baseOffset) {
+          headerHost.dataset.baseOffset = String(headerHost.offsetTop);
+        }
+
+        const maxTranslate = Math.max(
+          column.offsetHeight - headerHost.offsetHeight - 12,
+          0,
+        );
+        const naturalTop =
+          column.getBoundingClientRect().top +
+          Number(headerHost.dataset.baseOffset ?? 0);
+        const translateY = Math.min(
+          Math.max(targetTop - naturalTop, 0),
+          maxTranslate,
+        );
+
+        headerHost.style.transform = `translateY(${translateY}px)`;
+      });
+    };
+
+    const requestSync = () => {
+      if (frame) {
+        window.cancelAnimationFrame(frame);
+      }
+      frame = window.requestAnimationFrame(syncColumnHeaders);
+    };
+
+    requestSync();
+    const syncTimers = [
+      window.setTimeout(requestSync, 0),
+      window.setTimeout(requestSync, 160),
+      window.setTimeout(requestSync, 450),
+    ];
+    scroller.addEventListener("scroll", requestSync, { passive: true });
+    window.addEventListener("resize", requestSync);
+
+    return () => {
+      scroller.removeEventListener("scroll", requestSync);
+      window.removeEventListener("resize", requestSync);
+      clearTimeout(syncTimers[0]);
+      clearTimeout(syncTimers[1]);
+      clearTimeout(syncTimers[2]);
+      if (frame) {
+        window.cancelAnimationFrame(frame);
+      }
+    };
+  }, [board, isLoading]);
+
   const openCardSummary = useCallback(
     async (card: KanbanCardData) => {
       const activeKey = appKey || resolveAppKey();
@@ -622,7 +692,7 @@ export function KanbanDashboard() {
               </h1>
             </div>
 
-            <label className="flex min-w-[220px] flex-col gap-1 text-sm text-slate-600 md:max-w-[360px]">
+            <label className="flex min-w-[240px] flex-col gap-1 text-sm text-slate-600 md:max-w-[360px]">
               <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                 Funil
               </span>
@@ -636,27 +706,21 @@ export function KanbanDashboard() {
                   <option key={pipeline.id} value={pipeline.id}>
                     {pipeline.name}
                     {pipeline.isMain ? " (principal)" : ""}
-                    {` • ${formatMoney(pipeline.totalValue)}`}
                   </option>
                 ))}
               </select>
             </label>
           </div>
 
-          <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
-            <div className="rounded-full bg-slate-100 px-3 py-2 text-xs font-medium text-slate-700">
-              Funil: <span className="font-semibold text-slate-950">{formatMoney(boardSummary.totalValue)}</span> <span className="text-slate-500">({boardSummary.totalCards} cards)</span>
-            </div>
-            <div className="rounded-full bg-emerald-100 px-3 py-2 text-xs font-medium text-emerald-900">
-              Ganha: <span className="font-semibold">{formatMoney(boardSummary.wonValue)}</span> <span className="text-emerald-800/80">({boardSummary.wonCards})</span>
-            </div>
-            <div className="rounded-full bg-rose-100 px-3 py-2 text-xs font-medium text-rose-900">
-              Perdida: <span className="font-semibold">{formatMoney(boardSummary.lostValue)}</span> <span className="text-rose-800/80">({boardSummary.lostCards})</span>
-            </div>
-            <div className="rounded-full bg-sky-100 px-3 py-2 text-xs font-medium text-sky-900">
-              Geral: <span className="font-semibold">{formatMoney(payload?.metrics.overallValue)}</span> <span className="text-sky-800/80">({payload?.metrics.overallCards ?? 0} cards)</span>
-            </div>
-          </div>
+          <p className="mt-3 border-t border-slate-100 pt-3 text-xs text-slate-500">
+            Funil <span className="font-semibold text-slate-900">{formatMoney(boardSummary.totalValue)}</span>
+            {" | "}
+            Ganha <span className="font-semibold text-emerald-700">{formatMoney(boardSummary.wonValue)}</span>
+            {" | "}
+            Perdida <span className="font-semibold text-rose-700">{formatMoney(boardSummary.lostValue)}</span>
+            {" | "}
+            Geral <span className="font-semibold text-sky-700">{formatMoney(payload?.metrics.overallValue)}</span>
+          </p>
         </header>
 
         {error ? (
@@ -665,12 +729,15 @@ export function KanbanDashboard() {
           </section>
         ) : null}
 
-        <section className="rounded-[28px] border border-slate-200 bg-white p-3 shadow-sm md:p-4">
+        <section className="rounded-[28px] border border-slate-200 bg-white shadow-sm">
           {isLoading ? (
-            <LoadingBoard />
+            <div className="p-3 md:p-4">
+              <LoadingBoard />
+            </div>
           ) : (
-            <div className="kanban-shell overflow-x-auto pb-2">
-              <ControlledBoard<BoardCard>
+            <div className="kanban-scroll h-[calc(100vh-12.5rem)] min-h-[560px] overflow-auto p-3 md:h-[calc(100vh-13rem)] md:p-4">
+              <div className="kanban-shell">
+                <ControlledBoard<BoardCard>
                 allowAddCard={false}
                 allowAddColumn={false}
                 allowRemoveCard={false}
@@ -690,7 +757,7 @@ export function KanbanDashboard() {
                     <article
                       aria-label={`Abrir resumo de ${card.record.title}`}
                       aria-pressed={isSelected}
-                      className={`kanban-card group flex min-h-[152px] cursor-pointer flex-col gap-3 rounded-[18px] border border-slate-200 bg-white p-3 text-left shadow-sm transition ${options.dragging ? "opacity-90" : ""} ${isMoving ? "ring-2 ring-sky-300" : ""} ${isSelected ? "border-slate-950 ring-1 ring-slate-950/10" : "hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"}`}
+                      className={`kanban-card group flex min-h-[148px] cursor-pointer flex-col gap-3 rounded-[18px] border border-slate-200 bg-white px-3 py-3 text-left shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition ${options.dragging ? "opacity-90" : ""} ${isMoving ? "ring-2 ring-sky-300" : ""} ${isSelected ? "border-slate-950 ring-1 ring-slate-950/10" : "hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_14px_28px_rgba(15,23,42,0.10)]"}`}
                       onClick={() => {
                         if (!options.dragging) {
                           void openCardSummary(card.record);
@@ -710,21 +777,23 @@ export function KanbanDashboard() {
                       tabIndex={0}
                     >
                       <div
-                        className="h-1.5 w-16 rounded-full"
+                        className="h-1 w-14 rounded-full"
                         style={{ backgroundColor: card.record.stageColor }}
                       />
 
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex min-w-0 items-center gap-2.5">
-                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-700">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-700">
                             {initialBadge(card.record.title)}
                           </div>
                           <div className="min-w-0 flex-1">
-                            <h2 className="truncate text-[15px] font-semibold leading-tight text-slate-950">
+                            <h2 className="truncate text-[14px] font-semibold leading-tight text-slate-950">
                               {card.record.title}
                             </h2>
                             <p className="mt-0.5 truncate text-[11px] text-slate-500">
-                              {card.record.channelLabel} / {card.record.inboxName}
+                              {card.record.channelLabel}
+                              {" - "}
+                              {card.record.inboxName}
                             </p>
                           </div>
                         </div>
@@ -733,7 +802,7 @@ export function KanbanDashboard() {
                           <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
                             Valor
                           </p>
-                          <p className="mt-0.5 text-sm font-semibold text-slate-950">
+                          <p className="mt-0.5 text-[13px] font-semibold text-slate-950">
                             {price}
                           </p>
                         </div>
@@ -761,12 +830,12 @@ export function KanbanDashboard() {
                           {card.record.highlights.slice(0, 4).map((highlight) => (
                             <span
                               key={`${card.id}-${highlight.label}`}
-                              className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[11px] text-slate-700"
+                              className="inline-flex max-w-full items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-700"
                             >
-                              <span className="truncate font-semibold text-slate-500">
+                              <span className="truncate font-medium text-slate-500">
                                 {highlight.label}
                               </span>
-                              <span className="truncate font-medium text-slate-800">
+                              <span className="truncate font-semibold text-slate-800">
                                 {highlight.value}
                               </span>
                             </span>
@@ -774,31 +843,12 @@ export function KanbanDashboard() {
                         </div>
                       ) : null}
 
-                      <div className="mt-auto grid grid-cols-3 gap-2 border-t border-slate-100 pt-3 text-[11px]">
-                        <div className="min-w-0 rounded-2xl bg-slate-50 px-2.5 py-2">
-                          <p className="font-semibold uppercase tracking-[0.12em] text-slate-400">
-                            Na etapa
-                          </p>
-                          <p className="mt-1 truncate text-[12px] font-medium text-slate-800">
-                            {stageDuration}
-                          </p>
-                        </div>
-                        <div className="min-w-0 rounded-2xl bg-slate-50 px-2.5 py-2">
-                          <p className="font-semibold uppercase tracking-[0.12em] text-slate-400">
-                            Atividade
-                          </p>
-                          <p className="mt-1 truncate text-[12px] font-medium text-slate-800">
-                            {formatRelativeTime(card.record.lastActivityAt)}
-                          </p>
-                        </div>
-                        <div className="min-w-0 rounded-2xl bg-slate-50 px-2.5 py-2">
-                          <p className="font-semibold uppercase tracking-[0.12em] text-slate-400">
-                            Lead
-                          </p>
-                          <p className="mt-1 truncate text-[12px] font-medium text-slate-800">
-                            {card.record.leadId ?? card.record.id}
-                          </p>
-                        </div>
+                      <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-slate-100 pt-2 text-[11px] text-slate-500">
+                        <span className="font-medium text-slate-700">
+                          Na etapa {stageDuration}
+                        </span>
+                        <span>Ativ. {formatRelativeTime(card.record.lastActivityAt)}</span>
+                        <span>Lead #{card.record.leadId ?? card.record.id}</span>
                       </div>
                     </article>
                   );
@@ -807,7 +857,7 @@ export function KanbanDashboard() {
                   const typedColumn = column as BoardColumn;
 
                   return (
-                    <header className="sticky top-[94px] z-10 -mx-1 mb-3 rounded-[18px] border border-slate-200 bg-white/96 px-3 py-3 shadow-sm backdrop-blur md:top-[102px]">
+                    <header className="kanban-column-header rounded-[18px] border border-slate-200 bg-white/96 px-3 py-3 shadow-sm backdrop-blur">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
@@ -833,7 +883,8 @@ export function KanbanDashboard() {
                 }}
               >
                 {board}
-              </ControlledBoard>
+                </ControlledBoard>
+              </div>
             </div>
           )}
         </section>
