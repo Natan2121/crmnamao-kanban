@@ -44,6 +44,11 @@ const COMPANY_FIELD_MATCHERS = [
   /(endereco|endere[çc]o|bairro|cidade|uf|cep|site|imovel|im[oó]vel)/i,
 ];
 
+const COMPANY_SUMMARY_MATCHERS = [
+  ...COMPANY_FIELD_MATCHERS,
+  /(origem|preco|preco|proposta|canal|status|funil|etapa)/i,
+];
+
 function normalizeText(value: string) {
   const trimmed = value.replace(/\s+/g, " ").trim();
 
@@ -202,9 +207,9 @@ function fieldPriority(label: string) {
   return match?.score ?? 9;
 }
 
-function isCompanyFieldLabel(label: string) {
+function isCompanySummaryFieldLabel(label: string) {
   const normalized = normalizeLookup(label);
-  return COMPANY_FIELD_MATCHERS.some((matcher) => matcher.test(normalized));
+  return COMPANY_SUMMARY_MATCHERS.some((matcher) => matcher.test(normalized));
 }
 
 function dedupeFields(fields: KanbanDetailField[]) {
@@ -424,7 +429,19 @@ export function buildFallbackCardSummary(
   const companySeen = new Set<string>();
   collectAttributeFields(customAttributes, "kommo_company_", companyFields, companySeen);
   collectAttributeFields(sender?.custom_attributes, "kommo_company_", companyFields, companySeen);
-  collectMatchingFields(leadFields, isCompanyFieldLabel, companyFields, companySeen);
+  pushField(
+    companyFields,
+    "Empresa",
+    sender?.name ?? customAttributes.kommo_company_name ?? `Lead #${leadId ?? conversation.id}`,
+    companySeen,
+  );
+  collectMatchingFields(leadFields, isCompanySummaryFieldLabel, companyFields, companySeen);
+  collectMatchingFields(
+    contactFields,
+    (label) => /(telefone|celular|whatsapp|email|e-mail)/i.test(normalizeLookup(label)),
+    companyFields,
+    companySeen,
+  );
 
   return {
     leadId,
