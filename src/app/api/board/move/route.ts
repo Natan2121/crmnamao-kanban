@@ -31,10 +31,12 @@ export async function POST(request: Request) {
     }
 
     const conversation = await fetchConversation(payload.conversationId);
+    const movedAt = new Date().toISOString();
     const customAttributes = {
       ...(conversation.custom_attributes ?? {}),
       kommo_pipeline: pipeline.name,
       kommo_stage: payload.stageName,
+      kommo_stage_changed_at: movedAt,
     };
 
     await updateConversationCustomAttributes(

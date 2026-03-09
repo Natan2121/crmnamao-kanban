@@ -81,6 +81,7 @@ export interface KanbanCardData {
   stageName: string;
   stageId: number | null;
   stageKind: "incoming" | "open" | "won" | "lost" | "unmapped";
+  stageEnteredAt: number;
   stageColor: string;
   inboxName: string;
   channelLabel: string;

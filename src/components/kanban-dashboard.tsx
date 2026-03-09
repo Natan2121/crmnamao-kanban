@@ -64,6 +64,42 @@ function formatMoney(value: number | null | undefined) {
   }).format(value);
 }
 
+function pluralize(value: number, singular: string, plural: string) {
+  return `${value} ${value === 1 ? singular : plural}`;
+}
+
+function formatStageDuration(unixSeconds: number) {
+  const now = Math.floor(Date.now() / 1000);
+  const elapsedSeconds = Math.max(0, now - unixSeconds);
+  const minute = 60;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  const week = 7 * day;
+  const month = 30 * day;
+
+  if (elapsedSeconds < day) {
+    const hours = Math.floor(elapsedSeconds / hour);
+    const minutes = Math.floor((elapsedSeconds % hour) / minute);
+    return `${hours}h ${minutes}min`;
+  }
+
+  if (elapsedSeconds < week) {
+    const days = Math.floor(elapsedSeconds / day);
+    const hours = Math.floor((elapsedSeconds % day) / hour);
+    return `${pluralize(days, "dia", "dias")} ${hours}h`;
+  }
+
+  if (elapsedSeconds < month) {
+    const weeks = Math.floor(elapsedSeconds / week);
+    const days = Math.floor((elapsedSeconds % week) / day);
+    return `${pluralize(weeks, "semana", "semanas")} ${pluralize(days, "dia", "dias")}`;
+  }
+
+  const months = Math.floor(elapsedSeconds / month);
+  const days = Math.floor((elapsedSeconds % month) / day);
+  return `${pluralize(months, "mes", "meses")} ${pluralize(days, "dia", "dias")}`;
+}
+
 function moveCardBetweenColumns(
   board: BoardState,
   cardId: string,
@@ -103,6 +139,7 @@ function moveCardBetweenColumns(
       stageName: destinationColumn.stageName,
       stageId: destinationColumn.stageId,
       stageKind: destinationColumn.stageKind,
+      stageEnteredAt: Math.floor(Date.now() / 1000),
       stageColor: destinationColumn.color,
     },
   };
@@ -643,6 +680,9 @@ export function KanbanDashboard() {
                 onCardDragEnd={handleCardDragEnd}
                 renderCard={(card, options) => {
                   const price = formatMoney(card.record.price ?? 0);
+                  const stageDuration = formatStageDuration(
+                    card.record.stageEnteredAt,
+                  );
                   const isMoving = movingCardId === card.id;
                   const isSelected = selectedCardId === card.record.id;
 
@@ -718,6 +758,9 @@ export function KanbanDashboard() {
                             {card.record.assigneeName}
                           </span>
                         ) : null}
+                        <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-900">
+                          Na etapa {stageDuration}
+                        </span>
                         <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-medium text-emerald-800">
                           Valor {price}
                         </span>
@@ -840,6 +883,9 @@ export function KanbanDashboard() {
                 </span>
                 <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold text-slate-700">
                   {selectedCard.conversationStatus}
+                </span>
+                <span className="rounded-full bg-amber-50 px-3 py-1 text-[11px] font-semibold text-amber-900">
+                  Na etapa {formatStageDuration(selectedCard.stageEnteredAt)}
                 </span>
                 <span className="rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-semibold text-emerald-800">
                   Valor {formatMoney(selectedCard.price ?? 0)}

@@ -59,6 +59,33 @@ function asNumber(value: unknown) {
   return null;
 }
 
+function asUnixSeconds(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.floor(value > 1_000_000_000_000 ? value / 1000 : value);
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    if (!normalized) {
+      return null;
+    }
+
+    const numericValue = Number(normalized);
+    if (Number.isFinite(numericValue)) {
+      return Math.floor(
+        numericValue > 1_000_000_000_000 ? numericValue / 1000 : numericValue,
+      );
+    }
+
+    const parsedDate = Date.parse(normalized);
+    if (Number.isFinite(parsedDate)) {
+      return Math.floor(parsedDate / 1000);
+    }
+  }
+
+  return null;
+}
+
 function compactText(value: string | null | undefined, maxLength: number) {
   if (!value) {
     return "";
@@ -251,6 +278,15 @@ function resolveCard(
     asString(sender?.name) ??
     asString(customAttributes.kommo_lead_proposta) ??
     `Lead #${leadId ?? conversation.id}`;
+  const stageEnteredAt =
+    asUnixSeconds(customAttributes.kommo_stage_changed_at) ??
+    asUnixSeconds(customAttributes.kommo_lead_stage_changed_at) ??
+    asUnixSeconds(customAttributes.kommo_stage_updated_at) ??
+    asUnixSeconds(customAttributes.kommo_lead_updated_at) ??
+    asUnixSeconds(customAttributes.kommo_updated_at) ??
+    asUnixSeconds(conversation.updated_at) ??
+    asUnixSeconds(conversation.created_at) ??
+    Math.floor(Date.now() / 1000);
 
   const card: KanbanCardData = {
     id: conversation.id,
@@ -261,6 +297,7 @@ function resolveCard(
     stageName,
     stageId: null,
     stageKind: "unmapped",
+    stageEnteredAt,
     stageColor: "#94a3b8",
     inboxName: inbox?.name ?? `Inbox ${conversation.inbox_id}`,
     channelLabel,
