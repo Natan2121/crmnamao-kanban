@@ -58,6 +58,13 @@ function normalizeText(value: string) {
   }
 }
 
+function normalizeLookup(value: string) {
+  return normalizeText(value)
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase();
+}
+
 function normalizeLabel(value: string) {
   return normalizeText(value)
     .replace(/\bPre\.?o\b/i, "Preco")
@@ -140,7 +147,7 @@ function humanizeStatus(value: string) {
 }
 
 function formatDateValue(value: string, label: string) {
-  const normalizedLabel = normalizeText(label).toLowerCase();
+  const normalizedLabel = normalizeLookup(label);
 
   if (/^\d{10}$/.test(value) && /(valid|vigenc|venc)/i.test(normalizedLabel)) {
     return new Intl.DateTimeFormat("pt-BR").format(new Date(Number(value) * 1000));
@@ -183,7 +190,7 @@ function normalizeField(field: KanbanDetailField) {
 }
 
 function fieldPriority(label: string) {
-  const normalized = normalizeText(label).toLowerCase();
+  const normalized = normalizeLookup(label);
   const match = IMPORTANT_FIELD_ORDER.find((item) => item.matcher.test(normalized));
   return match?.score ?? 9;
 }
