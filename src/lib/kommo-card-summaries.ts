@@ -21,6 +21,7 @@ const EXCLUDED_FIELD_LABELS = new Set([
   "Criado em",
   "Atualizado em",
   "Fechado em",
+  "ID",
 ]);
 
 const IMPORTANT_FIELD_ORDER: Array<{
@@ -60,7 +61,16 @@ function normalizeText(value: string) {
 function normalizeLabel(value: string) {
   return normalizeText(value)
     .replace(/\bPre\.?o\b/i, "Preco")
-    .replace(/\bPre\?o\b/i, "Preco");
+    .replace(/\bPre\?o\b/i, "Preco")
+    .replace(/^created at$/i, "Criado em")
+    .replace(/^updated at$/i, "Atualizado em")
+    .replace(/^closed at$/i, "Fechado em")
+    .replace(/^price$/i, "Preco")
+    .replace(/^id$/i, "ID")
+    .replace(/^tags$/i, "Tags")
+    .replace(/^Validade do Cli$/i, "Validade do CLI")
+    .replace(/^Vigencia Cli$/i, "Vigencia CLI")
+    .replace(/^Preco$/i, "Preco");
 }
 
 function uniqueValues(values: Array<string | null | undefined>) {
@@ -109,6 +119,36 @@ function tryResolveAttachmentName(value: string) {
   }
 }
 
+function humanizeChannel(value: string) {
+  if (value.includes("WebWidget")) return "Site";
+  if (value.includes("Whatsapp")) return "WhatsApp";
+  if (value.includes("Email")) return "Email";
+  if (value.includes("Telegram")) return "Telegram";
+  if (value.includes("Api")) return "API";
+  return value.replace("Channel::", "");
+}
+
+function humanizeStatus(value: string) {
+  const map: Record<string, string> = {
+    open: "Aberta",
+    pending: "Pendente",
+    resolved: "Resolvida",
+    snoozed: "Adiada",
+  };
+
+  return map[value] ?? value;
+}
+
+function formatDateValue(value: string, label: string) {
+  const normalizedLabel = normalizeText(label).toLowerCase();
+
+  if (/^\d{10}$/.test(value) && /(valid|vigenc|venc)/i.test(normalizedLabel)) {
+    return new Intl.DateTimeFormat("pt-BR").format(new Date(Number(value) * 1000));
+  }
+
+  return value;
+}
+
 function normalizeField(field: KanbanDetailField) {
   const label = normalizeLabel(field.label);
   let value = normalizeText(field.value);
@@ -128,6 +168,16 @@ function normalizeField(field: KanbanDetailField) {
   ) {
     return null;
   }
+
+  if (label === "Canal") {
+    value = humanizeChannel(value);
+  }
+
+  if (label === "Status") {
+    value = humanizeStatus(value);
+  }
+
+  value = formatDateValue(value, label);
 
   return { label, value } satisfies KanbanDetailField;
 }
