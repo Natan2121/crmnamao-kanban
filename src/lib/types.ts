@@ -35,6 +35,17 @@ export interface KanbanCardHighlight {
   value: string;
 }
 
+export interface KanbanDetailField {
+  label: string;
+  value: string;
+}
+
+export interface KanbanDetailSection {
+  id: string;
+  title: string;
+  fields: KanbanDetailField[];
+}
+
 export interface ChatwootConversation {
   id: number;
   account_id: number;
@@ -84,6 +95,15 @@ export interface KanbanCardData {
   price: number | null;
   leadId: string | null;
   openUrl: string;
+}
+
+export interface KanbanCardDetail {
+  conversationId: number;
+  leadId: string | null;
+  leadName: string | null;
+  contactNames: string[];
+  companyNames: string[];
+  sections: KanbanDetailSection[];
 }
 
 export interface KanbanColumnData {
