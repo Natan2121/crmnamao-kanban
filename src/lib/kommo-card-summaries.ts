@@ -37,6 +37,13 @@ const IMPORTANT_FIELD_ORDER: Array<{
   },
 ];
 
+const COMPANY_FIELD_MATCHERS = [
+  /empresa|razao|raz[aã]o|fantasia|estabelecimento/i,
+  /(cnpj|cnae|atividade|ramo|segmento|porte|risco)/i,
+  /(valid|vigenc|venc|licenc|licen[çc]|cli)/i,
+  /(endereco|endere[çc]o|bairro|cidade|uf|cep|site|imovel|im[oó]vel)/i,
+];
+
 function normalizeText(value: string) {
   const trimmed = value.replace(/\s+/g, " ").trim();
 
@@ -195,6 +202,11 @@ function fieldPriority(label: string) {
   return match?.score ?? 9;
 }
 
+function isCompanyFieldLabel(label: string) {
+  const normalized = normalizeLookup(label);
+  return COMPANY_FIELD_MATCHERS.some((matcher) => matcher.test(normalized));
+}
+
 function dedupeFields(fields: KanbanDetailField[]) {
   const seen = new Set<string>();
   const output: KanbanDetailField[] = [];
@@ -325,6 +337,33 @@ function collectAttributeFields(
   }
 }
 
+function collectMatchingFields(
+  sourceFields: KanbanDetailField[],
+  matcher: (label: string) => boolean,
+  targetFields: KanbanDetailField[],
+  seenLabels: Set<string>,
+) {
+  for (const field of sourceFields) {
+    if (!matcher(field.label)) {
+      continue;
+    }
+
+    pushField(targetFields, field.label, field.value, seenLabels);
+  }
+}
+
+function extractCompanyNames(fields: KanbanDetailField[]) {
+  return uniqueValues(
+    fields
+      .filter((field) =>
+        /(empresa|razao|raz[aã]o|fantasia|estabelecimento)/i.test(
+          normalizeLookup(field.label),
+        ),
+      )
+      .map((field) => field.value),
+  );
+}
+
 export interface ResolvedKommoCardSummary {
   leadId: string | null;
   leadName: string | null;
@@ -385,16 +424,13 @@ export function buildFallbackCardSummary(
   const companySeen = new Set<string>();
   collectAttributeFields(customAttributes, "kommo_company_", companyFields, companySeen);
   collectAttributeFields(sender?.custom_attributes, "kommo_company_", companyFields, companySeen);
+  collectMatchingFields(leadFields, isCompanyFieldLabel, companyFields, companySeen);
 
   return {
     leadId,
     leadName: normalizeText(sender?.name ?? `Lead #${leadId ?? conversation.id}`),
     contactNames: uniqueValues([sender?.name]),
-    companyNames: uniqueValues(
-      companyFields
-        .filter((field) => /nome|empresa/i.test(field.label))
-        .map((field) => field.value),
-    ),
+    companyNames: extractCompanyNames(companyFields),
     sections: normalizeSections(
       [
         {
