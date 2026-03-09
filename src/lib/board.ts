@@ -1,11 +1,9 @@
-import contactHighlights from "@/data/kommo-contact-highlights.json";
 import { getServerEnv, trimTrailingSlash } from "@/lib/env";
 import { fetchInboxes, fetchPipelineConversations } from "@/lib/chatwoot-api";
 import { getKommoPipelines, getPipelineById } from "@/lib/kommo-structure";
 import {
   BoardBreakdownItem,
   BoardResponse,
-  ChatwootContactMeta,
   KanbanCardHighlight,
   ChatwootConversation,
   ChatwootInbox,
@@ -15,6 +13,23 @@ import {
 
 const FALLBACK_STAGE_ID = "stage:unmapped";
 const BOARD_CACHE_TTL_MS = 20_000;
+const HIGHLIGHT_PRIORITY: Array<{
+  matcher: RegExp;
+  label: string;
+}> = [
+  { matcher: /origem/, label: "Origem" },
+  { matcher: /venc.*bombeir/, label: "Vencimento Bombeiros" },
+  { matcher: /venc.*vigil/, label: "Vencimento Vigilancia Sanitaria" },
+  { matcher: /valid.*cli/, label: "Validade do CLI" },
+  { matcher: /valid/, label: "Validade" },
+  { matcher: /vigenc/, label: "Vigencia" },
+  { matcher: /cnae/, label: "CNAE" },
+  { matcher: /segmento/, label: "Segmento" },
+  { matcher: /ramo/, label: "Ramo" },
+  { matcher: /atividade/, label: "Atividade" },
+  { matcher: /risco/, label: "Risco" },
+  { matcher: /licenc/, label: "Licenca" },
+];
 
 const boardCache = new Map<
   number,
@@ -23,8 +38,6 @@ const boardCache = new Map<
     value: BoardResponse;
   }
 >();
-const contactHighlightMap = contactHighlights as Record<string, KanbanCardHighlight[]>;
-
 function asString(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
@@ -51,6 +64,13 @@ function compactText(value: string | null | undefined, maxLength: number) {
   return normalized.length > maxLength
     ? `${normalized.slice(0, maxLength - 1)}...`
     : normalized;
+}
+
+function normalizeLookup(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase();
 }
 
 function humanizeChannel(channelType: string | null | undefined) {
@@ -91,14 +111,88 @@ function buildConversationUrl(
   return `${normalizedBaseUrl}${relativePath}`;
 }
 
-function resolveContactHighlights(sender?: ChatwootContactMeta) {
-  const sourceId = asString(sender?.custom_attributes?.kommo_source_id);
-
-  if (!sourceId) {
-    return [];
+function toHighlightValue(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
   }
 
-  return contactHighlightMap[sourceId] ?? [];
+  return asString(value);
+}
+
+function isNoiseValue(value: string) {
+  const normalized = value.trim();
+
+  if (!normalized) {
+    return true;
+  }
+
+  if (
+    normalized.startsWith("{") ||
+    normalized.startsWith("[") ||
+    normalized.includes("file_uuid") ||
+    normalized.includes("version_uuid")
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+function resolveHighlightLabel(key: string) {
+  const normalizedKey = normalizeLookup(key);
+  const matched = HIGHLIGHT_PRIORITY.find((item) => item.matcher.test(normalizedKey));
+
+  if (matched) {
+    return matched.label;
+  }
+
+  const label = key
+    .replace(/^kommo_(contact|lead|company)_/, "")
+    .replace(/_/g, " ")
+    .trim();
+
+  return label ? compactText(label, 40) : null;
+}
+
+function collectHighlights(
+  source: Record<string, unknown> | undefined,
+  bucket: KanbanCardHighlight[],
+  seenLabels: Set<string>,
+) {
+  if (!source) {
+    return;
+  }
+
+  for (const [key, rawValue] of Object.entries(source)) {
+    if (!key.startsWith("kommo_")) {
+      continue;
+    }
+
+    const normalizedKey = normalizeLookup(key);
+    const isRelevant = HIGHLIGHT_PRIORITY.some((item) =>
+      item.matcher.test(normalizedKey),
+    );
+
+    if (!isRelevant) {
+      continue;
+    }
+
+    const value = toHighlightValue(rawValue);
+    if (!value || isNoiseValue(value)) {
+      continue;
+    }
+
+    const label = resolveHighlightLabel(key);
+    if (!label || seenLabels.has(label)) {
+      continue;
+    }
+
+    bucket.push({
+      label,
+      value: compactText(value, 48),
+    });
+    seenLabels.add(label);
+  }
 }
 
 function resolveCard(
@@ -115,21 +209,21 @@ function resolveCard(
     conversation.meta?.channel ?? inbox?.channel_type,
   );
   const leadId = asString(customAttributes.kommo_lead_id);
-  const highlights = resolveContactHighlights(sender);
+  const highlights: KanbanCardHighlight[] = [];
+  const seenLabels = new Set<string>();
+
+  collectHighlights(sender?.custom_attributes, highlights, seenLabels);
+  collectHighlights(customAttributes, highlights, seenLabels);
+
   const title =
     asString(sender?.name) ??
     asString(customAttributes.kommo_lead_proposta) ??
     `Lead #${leadId ?? conversation.id}`;
-  const fallbackDescription =
-    asString(customAttributes.kommo_lead_proposta) ??
-    asString(customAttributes.kommo_lead_comentarios) ??
-    asString(customAttributes.kommo_lead_tags) ??
-    "";
 
   const card: KanbanCardData = {
     id: conversation.id,
     title,
-    description: compactText(fallbackDescription, 88),
+    description: "",
     highlights,
     pipelineName,
     stageName,

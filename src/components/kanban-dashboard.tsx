@@ -474,7 +474,7 @@ export function KanbanDashboard() {
 
                   return (
                     <article
-                      className={`kanban-card group flex min-h-[156px] flex-col gap-3 rounded-[20px] border border-slate-200 bg-white p-3 shadow-sm transition ${options.dragging ? "opacity-90" : ""} ${isMoving ? "ring-2 ring-sky-300" : ""}`}
+                      className={`kanban-card group flex min-h-[146px] flex-col gap-3 rounded-[20px] border border-slate-200 bg-white p-3 shadow-sm transition ${options.dragging ? "opacity-90" : ""} ${isMoving ? "ring-2 ring-sky-300" : ""}`}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex min-w-0 items-center gap-2.5">
@@ -498,15 +498,9 @@ export function KanbanDashboard() {
                         ) : null}
                       </div>
 
-                      {card.record.description ? (
-                        <p className="line-clamp-2 text-sm leading-5 text-slate-600">
-                          {card.record.description}
-                        </p>
-                      ) : null}
-
                       {card.record.highlights.length ? (
                         <div className="grid gap-1.5">
-                          {card.record.highlights.slice(0, 3).map(highlight => (
+                          {card.record.highlights.slice(0, 4).map(highlight => (
                             <div
                               key={`${card.id}-${highlight.label}`}
                               className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-2.5 py-2"
