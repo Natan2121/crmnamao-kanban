@@ -1,6 +1,26 @@
 import type { NextConfig } from "next";
 
-const chatwootOrigin = process.env.CHATWOOT_BASE_URL ?? "https://chat.crmnamao.cloud";
+const defaultChatwootOrigin = "https://chat.crmnamao.cloud";
+
+function toOrigin(value: string) {
+  try {
+    return new URL(value).origin;
+  } catch {
+    return value.replace(/\/+$/, "");
+  }
+}
+
+const frameAncestorOrigins = (
+  process.env.CHATWOOT_FRAME_ANCESTORS ??
+  process.env.CHATWOOT_BASE_URL ??
+  defaultChatwootOrigin
+)
+  .split(",")
+  .map((value) => value.trim())
+  .filter(Boolean)
+  .map(toOrigin);
+
+const frameAncestorsValue = ["'self'", ...new Set(frameAncestorOrigins)].join(" ");
 
 const nextConfig: NextConfig = {
   async headers() {
@@ -17,7 +37,7 @@ const nextConfig: NextConfig = {
               "style-src 'self' 'unsafe-inline'",
               "script-src 'self' 'unsafe-inline'",
               "connect-src 'self'",
-              `frame-ancestors 'self' ${chatwootOrigin}`,
+              `frame-ancestors ${frameAncestorsValue}`,
               "object-src 'none'",
               "base-uri 'self'",
               "form-action 'self'",
