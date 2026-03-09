@@ -17,6 +17,8 @@ Copie `.env.example` para `.env.local` e preencha:
 
 ```bash
 CHATWOOT_BASE_URL=https://chat.crmnamao.cloud
+# Opcional: lista de origins permitidos no iframe do Chatwoot
+# CHATWOOT_FRAME_ANCESTORS=https://chat.crmnamao.cloud
 CHATWOOT_ACCOUNT_ID=1
 CHATWOOT_API_TOKEN=seu_token_de_acesso
 APP_ACCESS_KEY=uma_chave_longa_e_aleatoria
@@ -53,6 +55,8 @@ npm run start
 - Build pack: `nixpacks` ou `dockerfile` automatico do Node
 - Port: `3000`
 - Variaveis: as do `.env.local`
+- `CHATWOOT_BASE_URL` e `CHATWOOT_FRAME_ANCESTORS` precisam estar disponiveis em build time quando usados no Coolify, porque o `Content-Security-Policy` do iframe e gerado no build do Next.js
+- Em staging, aponte `CHATWOOT_BASE_URL` para o Chatwoot de staging e, se necessario, use `CHATWOOT_FRAME_ANCESTORS` com a lista de origins que podem embutir o app
 
 Depois do deploy, registre no Chatwoot em `Configuracoes -> Integracoes -> Dashboard Apps`:
 
