@@ -950,32 +950,21 @@ export function KanbanDashboard() {
 
                   return (
                     <article
-                      aria-label={`Abrir resumo de ${card.record.title}`}
-                      aria-pressed={isSelected}
-                      className={`kanban-card group flex min-h-[168px] cursor-pointer flex-col rounded-[20px] border border-slate-200 bg-white px-4 py-3 text-left shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition ${options.dragging ? "opacity-95" : ""} ${isMoving ? "ring-2 ring-slate-300" : ""} ${isSelected ? "border-slate-950 ring-1 ring-slate-950/10" : "hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_14px_28px_rgba(15,23,42,0.10)]"}`}
-                      onClick={() => {
-                        if (!options.dragging) {
-                          void openCardSummary(card.record);
-                        }
-                      }}
-                      onKeyDown={(event) => {
-                        if (options.dragging) {
-                          return;
-                        }
-
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          void openCardSummary(card.record);
-                        }
-                      }}
-                      role="button"
-                      tabIndex={0}
+                      className={`kanban-card group flex min-h-[168px] flex-col rounded-[20px] border border-slate-200 bg-white px-4 py-3 text-left shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition select-none ${options.dragging ? "cursor-grabbing opacity-95" : "cursor-grab"} ${isMoving ? "ring-2 ring-slate-300" : ""} ${isSelected ? "border-slate-950 ring-1 ring-slate-950/10" : "hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_14px_28px_rgba(15,23,42,0.10)]"}`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <h2 className="truncate text-[16px] font-bold leading-tight text-slate-950">
+                          <button
+                            aria-pressed={isSelected}
+                            className="block max-w-full truncate text-left text-[16px] font-bold leading-tight text-slate-950 transition hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void openCardSummary(card.record);
+                            }}
+                            type="button"
+                          >
                             {card.record.title}
-                          </h2>
+                          </button>
                           <p className="mt-1 truncate text-[12px] text-slate-500">
                             {contactMeta}
                           </p>
