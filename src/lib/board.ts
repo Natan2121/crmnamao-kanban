@@ -1,5 +1,9 @@
 import { getServerEnv, trimTrailingSlash } from "@/lib/env";
-import { fetchAllConversations, fetchInboxes } from "@/lib/chatwoot-api";
+import {
+  fetchAllConversations,
+  fetchInboxes,
+  updateConversationCustomAttributes,
+} from "@/lib/chatwoot-api";
 import { CARD_OVERRIDES_ATTRIBUTE_KEY, parseCardOverrides } from "@/lib/card-overrides";
 import { getKommoPipelines, getPipelineById } from "@/lib/kommo-structure";
 import {
@@ -341,6 +345,77 @@ function stageByName(pipeline: KommoPipeline, stageName: string | null) {
   );
 }
 
+function resolveEntryStage(pipeline: KommoPipeline) {
+  return pipeline.statuses.find((status) => status.type === 1) ?? pipeline.statuses[0] ?? null;
+}
+
+function shouldBootstrapConversation(conversation: ChatwootConversation) {
+  if (!["open", "pending"].includes(conversation.status)) {
+    return false;
+  }
+
+  const customAttributes = conversation.custom_attributes ?? {};
+  const pipelineName = asString(customAttributes.kommo_pipeline);
+  const stageName = asString(customAttributes.kommo_stage);
+
+  return !pipelineName || !stageName;
+}
+
+async function applyDefaultEntryStage(
+  conversations: ChatwootConversation[],
+  pipelines: KommoPipeline[],
+  defaultPipeline: KommoPipeline,
+) {
+  let updated = false;
+
+  const nextConversations = await Promise.all(
+    conversations.map(async (conversation) => {
+      if (!shouldBootstrapConversation(conversation)) {
+        return conversation;
+      }
+
+      const customAttributes = {
+        ...(conversation.custom_attributes ?? {}),
+      };
+      const currentPipelineName = asString(customAttributes.kommo_pipeline);
+      const targetPipeline =
+        pipelines.find((pipeline) => pipeline.name === currentPipelineName) ?? defaultPipeline;
+      const targetStage =
+        stageByName(targetPipeline, asString(customAttributes.kommo_stage)) ??
+        resolveEntryStage(targetPipeline);
+
+      if (!targetStage) {
+        return conversation;
+      }
+
+      customAttributes.kommo_pipeline = targetPipeline.name;
+      customAttributes.kommo_stage = targetStage.name;
+      customAttributes.kommo_stage_changed_at = new Date().toISOString();
+
+      const persistedConversation = await updateConversationCustomAttributes(
+        conversation.id,
+        customAttributes,
+      );
+
+      updated = true;
+
+      return {
+        ...conversation,
+        ...persistedConversation,
+        custom_attributes: {
+          ...(conversation.custom_attributes ?? {}),
+          ...(persistedConversation.custom_attributes ?? {}),
+        },
+      } satisfies ChatwootConversation;
+    }),
+  );
+
+  return {
+    conversations: nextConversations,
+    updated,
+  };
+}
+
 function sumCardValues(cards: KanbanCardData[]) {
   return cards.reduce((sum, card) => sum + (card.price ?? 0), 0);
 }
@@ -375,7 +450,12 @@ export async function buildBoardResponse(
     fetchAllConversations(force),
     fetchInboxes(force),
   ]);
-  const conversations = allConversations.filter(
+  const defaultPipeline = getPipelineById(null);
+  const {
+    conversations: hydratedConversations,
+    updated: autoAssignedNewLeads,
+  } = await applyDefaultEntryStage(allConversations, pipelines, defaultPipeline);
+  const conversations = hydratedConversations.filter(
     (conversation) => conversation.custom_attributes?.kommo_pipeline === selectedPipeline.name,
   );
 
@@ -429,7 +509,7 @@ export async function buildBoardResponse(
   let overallCards = 0;
   let overallValue = 0;
 
-  for (const conversation of allConversations) {
+  for (const conversation of hydratedConversations) {
     const pipelineName = asString(conversation.custom_attributes?.kommo_pipeline);
     if (!pipelineName) {
       continue;
@@ -556,6 +636,10 @@ export async function buildBoardResponse(
       statusBreakdown: toBreakdown(statusCounts),
     },
   };
+
+  if (autoAssignedNewLeads) {
+    boardCache.clear();
+  }
 
   boardCache.set(cacheKey, {
     expiresAt: Date.now() + BOARD_CACHE_TTL_MS,

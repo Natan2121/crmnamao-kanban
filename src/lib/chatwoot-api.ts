@@ -37,6 +37,26 @@ let conversationsCache:
     }
   | null = null;
 
+function upsertConversationCacheEntry(conversation: ChatwootConversation) {
+  if (!conversationsCache) {
+    return;
+  }
+
+  const nextValue = [...conversationsCache.value];
+  const index = nextValue.findIndex((item) => item.id === conversation.id);
+
+  if (index === -1) {
+    nextValue.push(conversation);
+  } else {
+    nextValue[index] = conversation;
+  }
+
+  conversationsCache = {
+    ...conversationsCache,
+    value: nextValue,
+  };
+}
+
 function accountScopedPath(path: string) {
   const { CHATWOOT_ACCOUNT_ID } = getServerEnv();
   return `/api/v1/accounts/${CHATWOOT_ACCOUNT_ID}${path}`;
@@ -173,7 +193,7 @@ export async function updateConversationCustomAttributes(
   conversationId: number,
   customAttributes: Record<string, unknown>,
 ) {
-  return chatwootFetch<ChatwootConversation>(
+  const conversation = await chatwootFetch<ChatwootConversation>(
     accountScopedPath(`/conversations/${conversationId}/custom_attributes`),
     {
       method: "POST",
@@ -182,13 +202,16 @@ export async function updateConversationCustomAttributes(
       }),
     },
   );
+
+  upsertConversationCacheEntry(conversation);
+  return conversation;
 }
 
 export async function updateConversationStatus(
   conversationId: number,
   status: ConversationStatusValue,
 ) {
-  return chatwootFetch<ChatwootConversation>(
+  const conversation = await chatwootFetch<ChatwootConversation>(
     accountScopedPath(`/conversations/${conversationId}/toggle_status`),
     {
       method: "POST",
@@ -197,6 +220,9 @@ export async function updateConversationStatus(
       }),
     },
   );
+
+  upsertConversationCacheEntry(conversation);
+  return conversation;
 }
 
 export async function fetchAllConversations(force = false) {
