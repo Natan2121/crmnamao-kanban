@@ -1,5 +1,10 @@
 import { getServerEnv, trimTrailingSlash } from "@/lib/env";
-import { ChatwootConversation, ChatwootInbox } from "@/lib/types";
+import {
+  ChatwootContactMeta,
+  ChatwootConversation,
+  ChatwootInbox,
+  ConversationStatusValue,
+} from "@/lib/types";
 
 interface ConversationsIndexResponse {
   data: {
@@ -37,7 +42,7 @@ function accountScopedPath(path: string) {
   return `/api/v1/accounts/${CHATWOOT_ACCOUNT_ID}${path}`;
 }
 
-async function chatwootFetch<T>(path: string, init?: RequestInit) {
+async function chatwootRequest(path: string, init?: RequestInit) {
   const env = getServerEnv();
   let lastError: Error | null = null;
 
@@ -73,7 +78,7 @@ async function chatwootFetch<T>(path: string, init?: RequestInit) {
 
         lastError = error;
       } else {
-        return (await response.json()) as T;
+        return response;
       }
     } catch (error) {
       lastError =
@@ -90,6 +95,17 @@ async function chatwootFetch<T>(path: string, init?: RequestInit) {
   }
 
   throw lastError ?? new Error("Falha ao consultar o Chatwoot.");
+}
+
+async function chatwootFetch<T>(path: string, init?: RequestInit) {
+  const response = await chatwootRequest(path, init);
+  const body = await response.text();
+
+  if (!body) {
+    throw new Error(`Chatwoot respondeu sem JSON em ${path}.`);
+  }
+
+  return JSON.parse(body) as T;
 }
 
 export async function fetchInboxes(force = false) {
@@ -114,6 +130,45 @@ export async function fetchConversation(conversationId: number) {
   );
 }
 
+export async function updateContact(
+  contactId: number,
+  updates: {
+    name?: string | null;
+    email?: string | null;
+    phoneNumber?: string | null;
+  },
+) {
+  const payload: Record<string, string | null> = {};
+
+  if (updates.name !== undefined) {
+    payload.name = updates.name;
+  }
+
+  if (updates.email !== undefined) {
+    payload.email = updates.email;
+  }
+
+  if (updates.phoneNumber !== undefined) {
+    payload.phone_number = updates.phoneNumber;
+  }
+
+  if (!Object.keys(payload).length) {
+    return null;
+  }
+
+  const response = await chatwootRequest(accountScopedPath(`/contacts/${contactId}`), {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+  const body = await response.text();
+
+  if (!body) {
+    return null;
+  }
+
+  return JSON.parse(body) as ChatwootContactMeta;
+}
+
 export async function updateConversationCustomAttributes(
   conversationId: number,
   customAttributes: Record<string, unknown>,
@@ -124,6 +179,21 @@ export async function updateConversationCustomAttributes(
       method: "POST",
       body: JSON.stringify({
         custom_attributes: customAttributes,
+      }),
+    },
+  );
+}
+
+export async function updateConversationStatus(
+  conversationId: number,
+  status: ConversationStatusValue,
+) {
+  return chatwootFetch<ChatwootConversation>(
+    accountScopedPath(`/conversations/${conversationId}/toggle_status`),
+    {
+      method: "POST",
+      body: JSON.stringify({
+        status,
       }),
     },
   );

@@ -1,5 +1,6 @@
 import { getServerEnv, trimTrailingSlash } from "@/lib/env";
 import { fetchAllConversations, fetchInboxes } from "@/lib/chatwoot-api";
+import { CARD_OVERRIDES_ATTRIBUTE_KEY, parseCardOverrides } from "@/lib/card-overrides";
 import { getKommoPipelines, getPipelineById } from "@/lib/kommo-structure";
 import {
   BoardBreakdownItem,
@@ -263,6 +264,9 @@ function resolveCard(
   const sender = conversation.meta?.sender;
   const stageName = asString(customAttributes.kommo_stage) ?? "Sem etapa";
   const pipelineName = asString(customAttributes.kommo_pipeline) ?? "Sem funil";
+  const cardOverrides = parseCardOverrides(
+    customAttributes[CARD_OVERRIDES_ATTRIBUTE_KEY],
+  );
   const inbox = inboxById.get(conversation.inbox_id);
   const channelLabel = humanizeChannel(
     conversation.meta?.channel ?? inbox?.channel_type,
@@ -275,6 +279,7 @@ function resolveCard(
   collectHighlights(customAttributes, highlights, seenLabels);
 
   const title =
+    cardOverrides.title ??
     asString(sender?.name) ??
     asString(customAttributes.kommo_lead_proposta) ??
     `Lead #${leadId ?? conversation.id}`;
@@ -303,6 +308,7 @@ function resolveCard(
     inboxName: inbox?.name ?? `Inbox ${conversation.inbox_id}`,
     channelLabel,
     conversationStatus: humanizeStatus(conversation.status),
+    conversationStatusValue: conversation.status,
     unreadCount: conversation.unread_count ?? 0,
     tags: Array.isArray(conversation.labels) ? conversation.labels : [],
     lastActivityAt: conversation.last_activity_at,
@@ -381,10 +387,16 @@ export async function buildBoardResponse(
         id: pipeline.id,
         name: pipeline.name,
         isMain: pipeline.isMain,
-        stageCount: pipeline.statuses.length,
-        totalCards: 0,
-        totalValue: 0,
-        wonCards: 0,
+      stageCount: pipeline.statuses.length,
+      statuses: pipeline.statuses.map((status) => ({
+        id: status.id,
+        name: status.name,
+        color: status.color,
+        kind: resolveStageKind(status),
+      })),
+      totalCards: 0,
+      totalValue: 0,
+      wonCards: 0,
         wonValue: 0,
         lostCards: 0,
         lostValue: 0,
@@ -506,6 +518,12 @@ export async function buildBoardResponse(
         name: pipeline.name,
         isMain: pipeline.isMain,
         stageCount: pipeline.statuses.length,
+        statuses: pipeline.statuses.map((status) => ({
+          id: status.id,
+          name: status.name,
+          color: status.color,
+          kind: resolveStageKind(status),
+        })),
         totalCards: 0,
         totalValue: 0,
         wonCards: 0,

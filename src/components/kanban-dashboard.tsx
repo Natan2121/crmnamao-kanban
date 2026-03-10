@@ -12,6 +12,7 @@ import {
   BoardResponse,
   KanbanCardData,
   KanbanCardDetail,
+  ConversationStatusValue,
 } from "@/lib/types";
 
 interface BoardCard extends Card {
@@ -32,6 +33,31 @@ interface BoardColumn extends Column<BoardCard> {
 interface BoardState {
   columns: BoardColumn[];
 }
+
+interface DetailDraftField {
+  sectionTitle: string;
+  label: string;
+  value: string;
+}
+
+interface DetailDraft {
+  conversationId: number;
+  title: string;
+  pipelineId: number;
+  stageName: string;
+  status: ConversationStatusValue;
+  fields: DetailDraftField[];
+}
+
+const STATUS_OPTIONS: Array<{
+  value: ConversationStatusValue;
+  label: string;
+}> = [
+  { value: "open", label: "Aberta" },
+  { value: "pending", label: "Pendente" },
+  { value: "resolved", label: "Resolvida" },
+  { value: "snoozed", label: "Adiada" },
+];
 
 function buildBoardState(payload: BoardResponse): BoardState {
   return {
@@ -518,6 +544,62 @@ function resolveDrawerTitle(card: KanbanCardData, detail: KanbanCardDetail | nul
   );
 }
 
+function normalizeLookup(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase();
+}
+
+function isPipelineField(label: string) {
+  return normalizeLookup(label) === "funil";
+}
+
+function isStageField(label: string) {
+  return normalizeLookup(label) === "etapa";
+}
+
+function isStatusField(label: string) {
+  return normalizeLookup(label) === "status";
+}
+
+function isChannelField(label: string) {
+  return normalizeLookup(label) === "canal";
+}
+
+function isPriceField(label: string) {
+  const normalized = normalizeLookup(label);
+  return normalized === "preco" || normalized === "valor";
+}
+
+function isLeadNameField(sectionTitle: string, label: string) {
+  return (
+    normalizeLookup(sectionTitle).includes("lead") &&
+    normalizeLookup(label) === "nome do lead"
+  );
+}
+
+function buildDetailDraft(
+  card: KanbanCardData,
+  detail: KanbanCardDetail,
+  pipelineId: number,
+): DetailDraft {
+  return {
+    conversationId: card.id,
+    title: card.title,
+    pipelineId,
+    stageName: card.stageName,
+    status: (card.conversationStatusValue as ConversationStatusValue) ?? "open",
+    fields: detail.sections.flatMap((section) =>
+      section.fields.map((field) => ({
+        sectionTitle: section.title,
+        label: field.label,
+        value: field.value,
+      })),
+    ),
+  };
+}
+
 export function KanbanDashboard() {
   const [payload, setPayload] = useState<BoardResponse | null>(null);
   const [board, setBoard] = useState<BoardState>({ columns: [] });
@@ -530,6 +612,9 @@ export function KanbanDashboard() {
   );
   const [isLoading, setIsLoading] = useState(true);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
+  const [isEditingDetail, setIsEditingDetail] = useState(false);
+  const [isSavingDetail, setIsSavingDetail] = useState(false);
+  const [detailDraft, setDetailDraft] = useState<DetailDraft | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [movingCardId, setMovingCardId] = useState<string | null>(null);
@@ -541,6 +626,15 @@ export function KanbanDashboard() {
   );
   const boardSummary = useMemo(() => summarizeBoard(board), [board]);
   const selectedDetail = selectedCard ? detailCache[selectedCard.id] ?? null : null;
+  const editablePipeline = useMemo(
+    () =>
+      detailDraft
+        ? payload?.pipelines.find((pipeline) => pipeline.id === detailDraft.pipelineId) ??
+          null
+        : null,
+    [detailDraft, payload],
+  );
+  const editableStages = editablePipeline?.statuses ?? [];
   const wonColumn = useMemo(
     () => board.columns.find((column) => column.stageKind === "won") ?? null,
     [board],
@@ -554,11 +648,40 @@ export function KanbanDashboard() {
       section.title.toLowerCase().includes("empresa"),
     ) ?? false;
 
-  const loadBoard = useCallback(async (pipelineId?: number | null, force = false) => {
+  useEffect(() => {
+    if (!selectedCard || !selectedDetail || !selectedPipelineId) {
+      setDetailDraft(null);
+      setIsEditingDetail(false);
+      setIsSavingDetail(false);
+      return;
+    }
+
+    if (
+      !isEditingDetail ||
+      detailDraft?.conversationId !== selectedCard.id
+    ) {
+      setDetailDraft(buildDetailDraft(selectedCard, selectedDetail, selectedPipelineId));
+    }
+  }, [
+    detailDraft?.conversationId,
+    isEditingDetail,
+    selectedCard,
+    selectedDetail,
+    selectedPipelineId,
+  ]);
+
+  const loadBoard = useCallback(async (
+    pipelineId?: number | null,
+    force = false,
+    preserveSelection = false,
+  ) => {
     const activeKey = resolveAppKey();
     setAppKey(activeKey);
-    setSelectedCardId(null);
-    setDetailError(null);
+
+    if (!preserveSelection) {
+      setSelectedCardId(null);
+      setDetailError(null);
+    }
 
     if (!activeKey) {
       setError("Falta o appKey no hash da URL do dashboard app.");
@@ -730,6 +853,115 @@ export function KanbanDashboard() {
     },
     [appKey, detailCache],
   );
+
+  const updateDraftField = useCallback(
+    (sectionTitle: string, label: string, value: string) => {
+      setDetailDraft((current) => {
+        if (!current) {
+          return current;
+        }
+
+        const nextFields = current.fields.map((field) =>
+          field.sectionTitle === sectionTitle && field.label === label
+            ? { ...field, value }
+            : field,
+        );
+
+        return {
+          ...current,
+          title: isLeadNameField(sectionTitle, label) ? value : current.title,
+          fields: nextFields,
+        };
+      });
+    },
+    [],
+  );
+
+  const handleDraftPipelineChange = useCallback(
+    (pipelineId: number) => {
+      setDetailDraft((current) => {
+        if (!current || !payload) {
+          return current;
+        }
+
+        const nextPipeline =
+          payload.pipelines.find((pipeline) => pipeline.id === pipelineId) ?? null;
+        const nextStatuses = nextPipeline?.statuses ?? [];
+        const currentStageIsValid = nextStatuses.some(
+          (stage) => stage.name === current.stageName,
+        );
+
+        return {
+          ...current,
+          pipelineId,
+          stageName: currentStageIsValid
+            ? current.stageName
+            : nextStatuses[0]?.name ?? current.stageName,
+        };
+      });
+    },
+    [payload],
+  );
+
+  const handleSaveDetail = useCallback(async () => {
+    if (!detailDraft || !selectedCard) {
+      return;
+    }
+
+    const activeKey = appKey || resolveAppKey();
+    if (!activeKey) {
+      setDetailError("Falta o appKey no hash da URL do dashboard app.");
+      return;
+    }
+
+    const firstPriceField = detailDraft.fields.find((field) => isPriceField(field.label));
+
+    setIsSavingDetail(true);
+    setDetailError(null);
+
+    try {
+      const response = await fetch("/api/board/card", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "x-kanban-app-key": activeKey,
+        },
+        body: JSON.stringify({
+          conversationId: detailDraft.conversationId,
+          title: detailDraft.title.trim() || selectedCard.title,
+          pipelineId: detailDraft.pipelineId,
+          stageName: detailDraft.stageName,
+          status: detailDraft.status,
+          price: firstPriceField?.value ?? "",
+          fields: detailDraft.fields,
+        }),
+      });
+      const result = (await response.json()) as {
+        detail?: KanbanCardDetail;
+        error?: string;
+      };
+
+      if (!response.ok || !result.detail) {
+        throw new Error(result.error ?? "Nao foi possivel salvar o card.");
+      }
+
+      setDetailCache((current) => ({
+        ...current,
+        [detailDraft.conversationId]: result.detail!,
+      }));
+      setSelectedCardId(detailDraft.conversationId);
+      await loadBoard(detailDraft.pipelineId, true, true);
+      setIsEditingDetail(false);
+    } catch (saveError) {
+      setDetailError(
+        saveError instanceof Error
+          ? saveError.message
+          : "Nao foi possivel salvar o card.",
+      );
+    } finally {
+      setIsSavingDetail(false);
+    }
+  }, [appKey, detailDraft, loadBoard, selectedCard]);
 
   const handlePipelineChange = useCallback(
     async (event: React.ChangeEvent<HTMLSelectElement>) => {
@@ -1169,27 +1401,106 @@ export function KanbanDashboard() {
                 </span>
               </div>
 
+              {selectedDetail ? (
+                <div className="mt-4 grid gap-2">
+                  <label className="grid gap-1.5">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                      Titulo do card
+                    </span>
+                    <input
+                      className="rounded-[14px] border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                      disabled={!isEditingDetail || !detailDraft || isSavingDetail}
+                      onChange={(event) => {
+                        setDetailDraft((current) => {
+                          if (!current) {
+                            return current;
+                          }
+
+                          return {
+                            ...current,
+                            title: event.target.value,
+                            fields: current.fields.map((field) =>
+                              isLeadNameField(field.sectionTitle, field.label)
+                                ? {
+                                    ...field,
+                                    value: event.target.value,
+                                  }
+                                : field,
+                            ),
+                          };
+                        });
+                      }}
+                      value={detailDraft?.title ?? selectedCard.title}
+                    />
+                  </label>
+                </div>
+              ) : null}
+
               <div className="mt-4 flex flex-wrap gap-2">
-                <button
-                  className="rounded-full bg-emerald-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={!wonColumn || movingCardId === String(selectedCard.id) || selectedCard.stageKind === "won"}
-                  onClick={() => {
-                    void moveSelectedCardToOutcome("won");
-                  }}
-                  type="button"
-                >
-                  Venda ganha
-                </button>
-                <button
-                  className="rounded-full bg-rose-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={!lostColumn || movingCardId === String(selectedCard.id) || selectedCard.stageKind === "lost"}
-                  onClick={() => {
-                    void moveSelectedCardToOutcome("lost");
-                  }}
-                  type="button"
-                >
-                  Venda perdida
-                </button>
+                {isEditingDetail ? (
+                  <>
+                    <button
+                      className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-950 hover:bg-slate-950 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={isSavingDetail}
+                      onClick={() => {
+                        if (!selectedDetail || !selectedPipelineId) {
+                          return;
+                        }
+
+                        setDetailDraft(
+                          buildDetailDraft(selectedCard, selectedDetail, selectedPipelineId),
+                        );
+                        setIsEditingDetail(false);
+                      }}
+                      type="button"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      className="rounded-full bg-slate-950 px-4 py-2 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={!detailDraft || isSavingDetail}
+                      onClick={() => {
+                        void handleSaveDetail();
+                      }}
+                      type="button"
+                    >
+                      {isSavingDetail ? "Salvando..." : "Salvar"}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-950 hover:bg-slate-950 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={!selectedDetail || isDetailLoading}
+                      onClick={() => {
+                        setIsEditingDetail(true);
+                      }}
+                      type="button"
+                    >
+                      Editar card
+                    </button>
+                    <button
+                      className="rounded-full bg-emerald-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={!wonColumn || movingCardId === String(selectedCard.id) || selectedCard.stageKind === "won"}
+                      onClick={() => {
+                        void moveSelectedCardToOutcome("won");
+                      }}
+                      type="button"
+                    >
+                      Venda ganha
+                    </button>
+                    <button
+                      className="rounded-full bg-rose-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={!lostColumn || movingCardId === String(selectedCard.id) || selectedCard.stageKind === "lost"}
+                      onClick={() => {
+                        void moveSelectedCardToOutcome("lost");
+                      }}
+                      type="button"
+                    >
+                      Venda perdida
+                    </button>
+                  </>
+                )}
                 <a
                   className="inline-flex rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-800 transition hover:border-slate-950 hover:bg-slate-950 hover:text-white"
                   href={selectedCard.openUrl}
@@ -1236,9 +1547,98 @@ export function KanbanDashboard() {
                             <dt className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                               {field.label}
                             </dt>
-                            <dd className="mt-2 text-sm font-medium text-slate-900">
-                              {field.value}
-                            </dd>
+                            {isEditingDetail && detailDraft ? (
+                              <dd className="mt-2">
+                                {isPipelineField(field.label) ? (
+                                  <select
+                                    className="w-full rounded-[12px] border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                                    disabled={isSavingDetail}
+                                    onChange={(event) => {
+                                      handleDraftPipelineChange(Number(event.target.value));
+                                    }}
+                                    value={detailDraft.pipelineId}
+                                  >
+                                    {payload?.pipelines.map((pipeline) => (
+                                      <option key={pipeline.id} value={pipeline.id}>
+                                        {pipeline.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : isStageField(field.label) ? (
+                                  <select
+                                    className="w-full rounded-[12px] border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                                    disabled={isSavingDetail || !editableStages.length}
+                                    onChange={(event) => {
+                                      setDetailDraft((current) =>
+                                        current
+                                          ? {
+                                              ...current,
+                                              stageName: event.target.value,
+                                            }
+                                          : current,
+                                      );
+                                    }}
+                                    value={detailDraft.stageName}
+                                  >
+                                    {editableStages.map((stage) => (
+                                      <option key={`${detailDraft.pipelineId}-${stage.id}`} value={stage.name}>
+                                        {stage.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : isStatusField(field.label) ? (
+                                  <select
+                                    className="w-full rounded-[12px] border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                                    disabled={isSavingDetail}
+                                    onChange={(event) => {
+                                      setDetailDraft((current) =>
+                                        current
+                                          ? {
+                                              ...current,
+                                              status: event.target.value as ConversationStatusValue,
+                                            }
+                                          : current,
+                                      );
+                                    }}
+                                    value={detailDraft.status}
+                                  >
+                                    {STATUS_OPTIONS.map((option) => (
+                                      <option key={option.value} value={option.value}>
+                                        {option.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : isChannelField(field.label) ? (
+                                  <span className="inline-flex min-h-[40px] items-center text-sm font-medium text-slate-500">
+                                    {field.value}
+                                  </span>
+                                ) : (
+                                  <input
+                                    className="w-full rounded-[12px] border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                                    disabled={isSavingDetail}
+                                    onChange={(event) => {
+                                      updateDraftField(
+                                        section.title,
+                                        field.label,
+                                        event.target.value,
+                                      );
+                                    }}
+                                    type={isPriceField(field.label) ? "text" : "text"}
+                                    value={
+                                      detailDraft.fields.find(
+                                        (draftField) =>
+                                          draftField.sectionTitle === section.title &&
+                                          draftField.label === field.label,
+                                      )?.value ?? field.value
+                                    }
+                                  />
+                                )}
+                              </dd>
+                            ) : (
+                              <dd className="mt-2 text-sm font-medium text-slate-900">
+                                {field.value}
+                              </dd>
+                            )}
                           </div>
                         ))}
                       </dl>

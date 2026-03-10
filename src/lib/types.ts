@@ -46,6 +46,19 @@ export interface KanbanDetailSection {
   fields: KanbanDetailField[];
 }
 
+export interface KanbanCardFieldOverride {
+  sectionTitle: string;
+  label: string;
+  value: string;
+}
+
+export interface KanbanCardOverrides {
+  title?: string | null;
+  fields: KanbanCardFieldOverride[];
+}
+
+export type ConversationStatusValue = "open" | "pending" | "resolved" | "snoozed";
+
 export interface ChatwootConversation {
   id: number;
   account_id: number;
@@ -87,6 +100,7 @@ export interface KanbanCardData {
   inboxName: string;
   channelLabel: string;
   conversationStatus: string;
+  conversationStatusValue: string;
   unreadCount: number;
   tags: string[];
   lastActivityAt: number;
@@ -110,6 +124,13 @@ export interface KanbanCardDetail {
   sections: KanbanDetailSection[];
 }
 
+export interface PipelineStageSummary {
+  id: number;
+  name: string;
+  color: string;
+  kind: KanbanCardData["stageKind"];
+}
+
 export interface KanbanColumnData {
   id: string;
   title: string;
@@ -126,6 +147,7 @@ export interface PipelineSummary {
   name: string;
   isMain: boolean;
   stageCount: number;
+  statuses: PipelineStageSummary[];
   totalCards: number;
   totalValue: number;
   wonCards: number;
