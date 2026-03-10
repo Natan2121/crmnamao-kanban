@@ -292,6 +292,7 @@ function resolveCard(
     id: conversation.id,
     title,
     description: "",
+    contactThumbnail: sender?.thumbnail ?? null,
     highlights,
     pipelineName,
     stageName,

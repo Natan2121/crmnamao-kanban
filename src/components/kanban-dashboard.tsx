@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   ControlledBoard,
   type Card,
@@ -216,31 +216,226 @@ function columnValue(column: BoardColumn) {
   return column.cards.reduce((sum, card) => sum + (card.record.price ?? 0), 0);
 }
 
-function formatRelativeTime(unixSeconds: number) {
-  const deltaSeconds = unixSeconds - Math.floor(Date.now() / 1000);
-  const formatter = new Intl.RelativeTimeFormat("pt-BR", { numeric: "auto" });
-
-  if (Math.abs(deltaSeconds) < 60) {
-    return formatter.format(deltaSeconds, "second");
-  }
-
-  const deltaMinutes = Math.round(deltaSeconds / 60);
-  if (Math.abs(deltaMinutes) < 60) {
-    return formatter.format(deltaMinutes, "minute");
-  }
-
-  const deltaHours = Math.round(deltaMinutes / 60);
-  if (Math.abs(deltaHours) < 24) {
-    return formatter.format(deltaHours, "hour");
-  }
-
-  const deltaDays = Math.round(deltaHours / 24);
-  return formatter.format(deltaDays, "day");
+function formatShortDate(unixSeconds: number) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "numeric",
+    month: "short",
+  }).format(new Date(unixSeconds * 1000));
 }
 
-function initialBadge(name: string) {
-  const clean = name.trim();
-  return clean ? clean.charAt(0).toUpperCase() : "?";
+function formatElapsedTime(unixSeconds: number) {
+  const deltaSeconds = Math.max(
+    0,
+    Math.floor(Date.now() / 1000) - Math.floor(unixSeconds),
+  );
+
+  if (deltaSeconds < 3600) {
+    return `${Math.max(1, Math.round(deltaSeconds / 60))}m`;
+  }
+
+  if (deltaSeconds < 86400) {
+    return `${Math.round(deltaSeconds / 3600)}h`;
+  }
+
+  return `${Math.round(deltaSeconds / 86400)}d`;
+}
+
+function getInitials(label: string) {
+  const parts = label.trim().split(/\s+/).filter(Boolean).slice(0, 2);
+  const initials = parts.map((part) => part.charAt(0).toUpperCase()).join("");
+  return initials || "?";
+}
+
+function buildContactMeta(record: KanbanCardData) {
+  return (
+    record.contactEmail ??
+    record.contactPhone ??
+    `${record.channelLabel} / ${record.inboxName}`
+  );
+}
+
+function buildOwnerMeta(record: KanbanCardData) {
+  const parts = [record.assigneeName, record.teamName].filter(
+    (value): value is string =>
+      typeof value === "string" && value.trim().length > 0,
+  );
+
+  return parts.join(" / ") || "Sem responsavel";
+}
+
+function getChannelTone(channelLabel: string) {
+  const label = channelLabel.toLowerCase();
+
+  if (label.includes("whatsapp")) {
+    return {
+      badge: "bg-[#edf2f0] text-[#475467]",
+      dot: "bg-[#36d579]",
+    };
+  }
+
+  if (label.includes("email")) {
+    return {
+      badge: "bg-[#eef2ff] text-[#475467]",
+      dot: "bg-[#7c7cff]",
+    };
+  }
+
+  if (label.includes("site")) {
+    return {
+      badge: "bg-[#edf4ff] text-[#475467]",
+      dot: "bg-[#58a6ff]",
+    };
+  }
+
+  return {
+    badge: "bg-[#eff1f4] text-[#475467]",
+    dot: "bg-[#94a3b8]",
+  };
+}
+
+function getUnreadTone(unreadCount: number) {
+  if (unreadCount > 0) {
+    return "text-[#b54708]";
+  }
+
+  return "text-[#667085]";
+}
+
+function CalendarIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="h-3.5 w-3.5"
+      fill="none"
+      viewBox="0 0 16 16"
+    >
+      <rect
+        height="10"
+        rx="2"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        width="11"
+        x="2.5"
+        y="3.5"
+      />
+      <path d="M5 2.5v3M11 2.5v3M2.5 6.5h11" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
+function ClockIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="h-3.5 w-3.5"
+      fill="none"
+      viewBox="0 0 16 16"
+    >
+      <circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M8 5v3.2l2.2 1.3" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
+function ArrowIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="h-3.5 w-3.5"
+      fill="none"
+      viewBox="0 0 16 16"
+    >
+      <path
+        d="M5 11 11 5M6 5h5v5"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.5"
+      />
+    </svg>
+  );
+}
+
+function PhoneIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="h-2.5 w-2.5"
+      fill="none"
+      viewBox="0 0 16 16"
+    >
+      <path
+        d="M5.7 2.8c.3-.4.9-.5 1.4-.3l1.3.7c.5.2.7.8.5 1.3l-.5 1c-.1.3-.1.6.1.9.4.7 1 1.4 1.7 2 .6.6 1.3 1.1 2 1.6.3.2.6.2.9.1l1-.5c.5-.2 1.1 0 1.3.5l.7 1.3c.2.5.1 1.1-.3 1.4l-.9.8c-.5.4-1.2.6-1.8.4-1.7-.4-3.5-1.4-5.2-3.1C7 10.4 6 8.6 5.6 6.9c-.1-.6 0-1.3.4-1.8l.7-.9Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+function MailIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="h-2.5 w-2.5"
+      fill="none"
+      viewBox="0 0 16 16"
+    >
+      <rect
+        height="9"
+        rx="1.5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        width="12"
+        x="2"
+        y="3.5"
+      />
+      <path d="m3.5 5 4.5 3 4.5-3" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
+function ChannelOverlay({ channelLabel }: { channelLabel: string }) {
+  const label = channelLabel.toLowerCase();
+
+  return (
+    <span className="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full border border-[#d7dde4] bg-white text-[#475467] shadow-sm">
+      {label.includes("email") ? <MailIcon /> : <PhoneIcon />}
+    </span>
+  );
+}
+
+function Avatar({
+  imageSrc,
+  label,
+  size,
+  overlay,
+}: {
+  imageSrc?: string | null;
+  label: string;
+  size: "lg" | "sm";
+  overlay?: ReactNode;
+}) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const sizeClass = size === "lg" ? "h-11 w-11 text-[14px]" : "h-9 w-9 text-[11px]";
+
+  return (
+    <div
+      className={`relative flex ${sizeClass} shrink-0 items-center justify-center overflow-hidden rounded-full border border-[#d7dde4] bg-[#e7eaee] font-semibold uppercase text-[#475467]`}
+    >
+      {imageSrc && !imageFailed ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          alt={label}
+          className="h-full w-full object-cover"
+          onError={() => setImageFailed(true)}
+          src={imageSrc}
+        />
+      ) : (
+        <span>{getInitials(label)}</span>
+      )}
+      {overlay}
+    </div>
+  );
 }
 
 function LoadingBoard() {
@@ -249,13 +444,13 @@ function LoadingBoard() {
       {Array.from({ length: 4 }).map((_, columnIndex) => (
         <div
           key={columnIndex}
-          className="flex h-[520px] w-[280px] flex-col gap-3 rounded-[24px] border border-slate-200 bg-white p-3"
+          className="flex h-[640px] w-[338px] flex-col gap-3 rounded-[28px] border border-slate-200 bg-[linear-gradient(180deg,_rgba(250,251,253,0.98),_rgba(243,246,250,0.98))] p-3"
         >
-          <div className="h-5 w-40 animate-pulse rounded-full bg-slate-200" />
+          <div className="h-[72px] animate-pulse rounded-[22px] bg-white" />
           {Array.from({ length: 4 }).map((__, cardIndex) => (
             <div
               key={cardIndex}
-              className="h-28 animate-pulse rounded-[18px] bg-slate-100"
+              className="h-[172px] animate-pulse rounded-[20px] border border-slate-200 bg-white"
             />
           ))}
         </div>
@@ -747,9 +942,9 @@ export function KanbanDashboard() {
                 onCardDragEnd={handleCardDragEnd}
                 renderCard={(card, options) => {
                   const price = formatMoney(card.record.price ?? 0);
-                  const stageDuration = formatStageDuration(
-                    card.record.stageEnteredAt,
-                  );
+                  const contactMeta = buildContactMeta(card.record);
+                  const ownerMeta = buildOwnerMeta(card.record);
+                  const channelTone = getChannelTone(card.record.channelLabel);
                   const isMoving = movingCardId === card.id;
                   const isSelected = selectedCardId === card.record.id;
 
@@ -757,7 +952,7 @@ export function KanbanDashboard() {
                     <article
                       aria-label={`Abrir resumo de ${card.record.title}`}
                       aria-pressed={isSelected}
-                      className={`kanban-card group flex min-h-[148px] cursor-pointer flex-col gap-3 rounded-[18px] border border-slate-200 bg-white px-3 py-3 text-left shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition ${options.dragging ? "opacity-90" : ""} ${isMoving ? "ring-2 ring-sky-300" : ""} ${isSelected ? "border-slate-950 ring-1 ring-slate-950/10" : "hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_14px_28px_rgba(15,23,42,0.10)]"}`}
+                      className={`kanban-card group flex min-h-[168px] cursor-pointer flex-col rounded-[20px] border border-slate-200 bg-white px-4 py-3 text-left shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition ${options.dragging ? "opacity-95" : ""} ${isMoving ? "ring-2 ring-slate-300" : ""} ${isSelected ? "border-slate-950 ring-1 ring-slate-950/10" : "hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_14px_28px_rgba(15,23,42,0.10)]"}`}
                       onClick={() => {
                         if (!options.dragging) {
                           void openCardSummary(card.record);
@@ -776,58 +971,65 @@ export function KanbanDashboard() {
                       role="button"
                       tabIndex={0}
                     >
-                      <div
-                        className="h-1 w-14 rounded-full"
-                        style={{ backgroundColor: card.record.stageColor }}
-                      />
-
                       <div className="flex items-start justify-between gap-3">
-                        <div className="flex min-w-0 items-center gap-2.5">
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-700">
-                            {initialBadge(card.record.title)}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <h2 className="truncate text-[14px] font-semibold leading-tight text-slate-950">
-                              {card.record.title}
-                            </h2>
-                            <p className="mt-0.5 truncate text-[11px] text-slate-500">
-                              {card.record.channelLabel}
-                              {" - "}
-                              {card.record.inboxName}
+                        <div className="min-w-0">
+                          <h2 className="truncate text-[16px] font-bold leading-tight text-slate-950">
+                            {card.record.title}
+                          </h2>
+                          <p className="mt-1 truncate text-[12px] text-slate-500">
+                            {contactMeta}
+                          </p>
+                        </div>
+
+                        <a
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-500 transition hover:bg-slate-100 hover:text-slate-950"
+                          href={card.record.openUrl}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                          }}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          <ArrowIcon />
+                        </a>
+                      </div>
+
+                      <div className="mt-3 flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <Avatar
+                            imageSrc={card.record.contactThumbnail}
+                            label={card.record.title}
+                            overlay={
+                              <ChannelOverlay channelLabel={card.record.channelLabel} />
+                            }
+                            size="lg"
+                          />
+                          <div className="min-w-0">
+                            <span
+                              className={`inline-flex items-center gap-2 rounded-[8px] px-2.5 py-1 text-[12px] font-medium ${channelTone.badge}`}
+                            >
+                              <span
+                                className={`h-2.5 w-2.5 rounded-full ${channelTone.dot}`}
+                              />
+                              {card.record.channelLabel.toLowerCase()}
+                            </span>
+                            <p className="mt-2 truncate text-[12px] text-slate-500">
+                              {ownerMeta}
                             </p>
                           </div>
                         </div>
 
-                        <div className="shrink-0 text-right">
-                          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                            Valor
-                          </p>
-                          <p className="mt-0.5 text-[13px] font-semibold text-slate-950">
+                        <div className="flex flex-col items-end gap-2">
+                          <Avatar label={ownerMeta} size="sm" />
+                          <p className="text-[12px] font-semibold text-violet-700">
                             {price}
                           </p>
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap gap-1.5">
-                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-700">
-                          {card.record.conversationStatus}
-                        </span>
-                        {card.record.unreadCount > 0 ? (
-                          <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold text-amber-900">
-                            {card.record.unreadCount} nova
-                            {card.record.unreadCount === 1 ? "" : "s"}
-                          </span>
-                        ) : null}
-                        {card.record.assigneeName ? (
-                          <span className="rounded-full bg-sky-100 px-2.5 py-1 text-[11px] font-medium text-sky-800">
-                            {card.record.assigneeName}
-                          </span>
-                        ) : null}
-                      </div>
-
                       {card.record.highlights.length ? (
-                        <div className="flex flex-wrap gap-1.5">
-                          {card.record.highlights.slice(0, 4).map((highlight) => (
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                          {card.record.highlights.slice(0, 2).map((highlight) => (
                             <span
                               key={`${card.id}-${highlight.label}`}
                               className="inline-flex max-w-full items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-700"
@@ -841,14 +1043,37 @@ export function KanbanDashboard() {
                             </span>
                           ))}
                         </div>
-                      ) : null}
+                      ) : (
+                        <div className="mt-3 h-8" />
+                      )}
 
-                      <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-slate-100 pt-2 text-[11px] text-slate-500">
-                        <span className="font-medium text-slate-700">
-                          Na etapa {stageDuration}
+                      <div className="mt-auto flex items-center justify-between gap-2 border-t border-slate-100 pt-3 text-[12px] text-slate-500">
+                        <span
+                          className={`inline-flex items-center gap-1.5 font-semibold ${getUnreadTone(card.record.unreadCount)}`}
+                        >
+                          <span
+                            className="h-2.5 w-2.5 rounded-full"
+                            style={{
+                              backgroundColor:
+                                card.record.unreadCount > 0
+                                  ? "#f79009"
+                                  : card.record.stageColor,
+                            }}
+                          />
+                          {card.record.unreadCount > 0
+                            ? `${card.record.unreadCount} nova${card.record.unreadCount === 1 ? "" : "s"}`
+                            : card.record.conversationStatus}
                         </span>
-                        <span>Ativ. {formatRelativeTime(card.record.lastActivityAt)}</span>
-                        <span>Lead #{card.record.leadId ?? card.record.id}</span>
+
+                        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-slate-700">
+                          <CalendarIcon />
+                          {formatShortDate(card.record.createdAt)}
+                        </span>
+
+                        <span className="inline-flex items-center gap-1 text-slate-500">
+                          <ClockIcon />
+                          {formatElapsedTime(card.record.lastActivityAt)}
+                        </span>
                       </div>
                     </article>
                   );
@@ -857,26 +1082,28 @@ export function KanbanDashboard() {
                   const typedColumn = column as BoardColumn;
 
                   return (
-                    <header className="kanban-column-header rounded-[18px] border border-slate-200 bg-white/96 px-3 py-3 shadow-sm backdrop-blur">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span
-                              className="h-2.5 w-2.5 shrink-0 rounded-full"
-                              style={{ backgroundColor: typedColumn.color }}
-                            />
-                            <h3 className="truncate text-sm font-semibold text-slate-950">
-                              {typedColumn.title}
-                            </h3>
-                          </div>
-                          <p className="mt-1 text-xs font-medium text-slate-500">
-                            Total {formatMoney(columnValue(typedColumn))}
-                          </p>
-                          <p className="mt-0.5 text-[11px] text-slate-400">
-                            {typedColumn.cards.length} negocio
-                            {typedColumn.cards.length === 1 ? "" : "s"}
-                          </p>
+                    <header className="kanban-column-header rounded-[22px] border border-slate-200 bg-white px-5 py-4 shadow-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <span
+                            className="h-2.5 w-2.5 shrink-0 rounded-full"
+                            style={{ backgroundColor: typedColumn.color }}
+                          />
+                          <h3 className="truncate text-[18px] font-bold text-slate-950">
+                            {typedColumn.title}
+                          </h3>
                         </div>
+                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[13px] font-bold text-slate-700">
+                          {typedColumn.cards.length}
+                        </span>
+                      </div>
+
+                      <div className="mt-2 flex items-center justify-between gap-3 text-[12px] text-slate-500">
+                        <span>
+                          {typedColumn.cards.length} negocio
+                          {typedColumn.cards.length === 1 ? "" : "s"}
+                        </span>
+                        <span>{formatMoney(columnValue(typedColumn))}</span>
                       </div>
                     </header>
                   );

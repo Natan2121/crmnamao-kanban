@@ -76,6 +76,7 @@ export interface KanbanCardData {
   id: number;
   title: string;
   description: string;
+  contactThumbnail: string | null;
   highlights: KanbanCardHighlight[];
   pipelineName: string;
   stageName: string;
