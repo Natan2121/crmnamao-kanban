@@ -1,6 +1,13 @@
-"use client";
+﻿"use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   ControlledBoard,
   type Card,
@@ -12,6 +19,7 @@ import {
   BoardResponse,
   KanbanCardData,
   KanbanCardDetail,
+  ConversationPriorityValue,
   ConversationStatusValue,
 } from "@/lib/types";
 
@@ -46,6 +54,9 @@ interface DetailDraft {
   pipelineId: number;
   stageName: string;
   status: ConversationStatusValue;
+  price: string;
+  responsibleKey: string;
+  priority: ConversationPriorityValue;
   fields: DetailDraftField[];
 }
 
@@ -57,6 +68,17 @@ const STATUS_OPTIONS: Array<{
   { value: "pending", label: "Pendente" },
   { value: "resolved", label: "Resolvida" },
   { value: "snoozed", label: "Adiada" },
+];
+
+const PRIORITY_OPTIONS: Array<{
+  value: ConversationPriorityValue;
+  label: string;
+}> = [
+  { value: "none", label: "Normal" },
+  { value: "low", label: "Baixa" },
+  { value: "medium", label: "Media" },
+  { value: "high", label: "Alta" },
+  { value: "urgent", label: "Critica" },
 ];
 
 function buildBoardState(payload: BoardResponse): BoardState {
@@ -88,6 +110,27 @@ function formatMoney(value: number | null | undefined) {
     currency: "BRL",
     maximumFractionDigits: value % 1 === 0 ? 0 : 2,
   }).format(value);
+}
+
+function formatFileSize(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return "0 B";
+  }
+
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+
+  const units = ["KB", "MB", "GB"];
+  let value = bytes / 1024;
+  let unitIndex = 0;
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+
+  return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`;
 }
 
 function pluralize(value: number, singular: string, plural: string) {
@@ -286,7 +329,20 @@ function buildOwnerMeta(record: KanbanCardData) {
       typeof value === "string" && value.trim().length > 0,
   );
 
-  return parts.join(" / ") || "Sem responsavel";
+  return parts.join(" / ") || null;
+}
+
+function buildResponsibleLabel(record: KanbanCardData) {
+  return buildOwnerMeta(record) ?? "Sem responsavel";
+}
+
+function buildCardSignal(record: KanbanCardData) {
+  const primaryHighlight = record.highlights[0];
+  if (primaryHighlight) {
+    return `${primaryHighlight.label}: ${primaryHighlight.value}`;
+  }
+
+  return buildContactMeta(record);
 }
 
 function getChannelTone(channelLabel: string) {
@@ -325,6 +381,41 @@ function getUnreadTone(unreadCount: number) {
   }
 
   return "text-[#667085]";
+}
+
+function getPriorityTone(priority: string | null | undefined) {
+  switch (priority) {
+    case "urgent":
+      return {
+        label: "Critica",
+        text: "text-rose-600",
+        dot: "bg-rose-400",
+      };
+    case "high":
+      return {
+        label: "Alta",
+        text: "text-amber-600",
+        dot: "bg-amber-400",
+      };
+    case "medium":
+      return {
+        label: "Media",
+        text: "text-sky-600",
+        dot: "bg-sky-400",
+      };
+    case "low":
+      return {
+        label: "Baixa",
+        text: "text-emerald-600",
+        dot: "bg-emerald-400",
+      };
+    default:
+      return {
+        label: "Normal",
+        text: "text-slate-500",
+        dot: "bg-slate-300",
+      };
+  }
 }
 
 function CalendarIcon() {
@@ -424,7 +515,7 @@ function ChannelOverlay({ channelLabel }: { channelLabel: string }) {
   const label = channelLabel.toLowerCase();
 
   return (
-    <span className="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full border border-[#d7dde4] bg-white text-[#475467] shadow-sm">
+    <span className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full border border-[#d7dde4] bg-white text-[#475467] shadow-sm">
       {label.includes("email") ? <MailIcon /> : <PhoneIcon />}
     </span>
   );
@@ -442,7 +533,8 @@ function Avatar({
   overlay?: ReactNode;
 }) {
   const [imageFailed, setImageFailed] = useState(false);
-  const sizeClass = size === "lg" ? "h-11 w-11 text-[14px]" : "h-9 w-9 text-[11px]";
+  const sizeClass =
+    size === "lg" ? "h-[34px] w-[34px] text-[11px]" : "h-[28px] w-[28px] text-[9px]";
 
   return (
     <div
@@ -466,17 +558,17 @@ function Avatar({
 
 function LoadingBoard() {
   return (
-    <div className="grid min-w-max grid-flow-col gap-4 overflow-x-auto pb-3">
+    <div className="grid min-w-max grid-flow-col gap-3 overflow-x-auto pb-2">
       {Array.from({ length: 4 }).map((_, columnIndex) => (
         <div
           key={columnIndex}
-          className="flex h-[640px] w-[338px] flex-col gap-3 rounded-[28px] border border-slate-200 bg-[linear-gradient(180deg,_rgba(250,251,253,0.98),_rgba(243,246,250,0.98))] p-3"
+          className="flex h-[560px] w-[320px] flex-col gap-1.5 rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,_rgba(250,251,253,0.98),_rgba(243,246,250,0.98))] p-2"
         >
-          <div className="h-[72px] animate-pulse rounded-[22px] bg-white" />
+          <div className="h-[44px] animate-pulse rounded-[16px] bg-white" />
           {Array.from({ length: 4 }).map((__, cardIndex) => (
             <div
               key={cardIndex}
-              className="h-[172px] animate-pulse rounded-[20px] border border-slate-200 bg-white"
+              className="h-[114px] animate-pulse rounded-[18px] border border-slate-200 bg-white"
             />
           ))}
         </div>
@@ -518,6 +610,22 @@ function resolveAppKey() {
 
   const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
   return hash.get("appKey") ?? "";
+}
+
+function canStartBoardPan(target: EventTarget | null) {
+  if (!(target instanceof Element)) {
+    return false;
+  }
+
+  if (
+    target.closest(".kanban-card") ||
+    target.closest(".kanban-column-header") ||
+    target.closest("button, a, input, select, textarea, label, [role='button']")
+  ) {
+    return false;
+  }
+
+  return Boolean(target.closest(".kanban-scroll"));
 }
 
 function findCardRecord(board: BoardState, cardId: number | null) {
@@ -590,6 +698,9 @@ function buildDetailDraft(
     pipelineId,
     stageName: card.stageName,
     status: (card.conversationStatusValue as ConversationStatusValue) ?? "open",
+    price: detail.quickEdit.price,
+    responsibleKey: detail.quickEdit.responsibleKey,
+    priority: detail.quickEdit.priority,
     fields: detail.sections.flatMap((section) =>
       section.fields.map((field) => ({
         sectionTitle: section.title,
@@ -601,6 +712,23 @@ function buildDetailDraft(
 }
 
 export function KanbanDashboard() {
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const stickyColumnsRef = useRef<
+    Array<{
+      headerHost: HTMLElement;
+      naturalTop: number;
+    }>
+  >([]);
+  const stickyBoardBottomRef = useRef(0);
+  const boardPanRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    scrollLeft: number;
+    frameId: number | null;
+    moved: boolean;
+    targetScrollLeft: number;
+  } | null>(null);
   const [payload, setPayload] = useState<BoardResponse | null>(null);
   const [board, setBoard] = useState<BoardState>({ columns: [] });
   const [selectedPipelineId, setSelectedPipelineId] = useState<number | null>(
@@ -612,9 +740,15 @@ export function KanbanDashboard() {
   );
   const [isLoading, setIsLoading] = useState(true);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
-  const [isEditingDetail, setIsEditingDetail] = useState(false);
   const [isSavingDetail, setIsSavingDetail] = useState(false);
   const [detailDraft, setDetailDraft] = useState<DetailDraft | null>(null);
+  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
+  const [attachmentNote, setAttachmentNote] = useState("");
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [attachmentSuccess, setAttachmentSuccess] = useState<string | null>(null);
+  const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
+  const [isBoardPanning, setIsBoardPanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [movingCardId, setMovingCardId] = useState<string | null>(null);
@@ -651,24 +785,30 @@ export function KanbanDashboard() {
   useEffect(() => {
     if (!selectedCard || !selectedDetail || !selectedPipelineId) {
       setDetailDraft(null);
-      setIsEditingDetail(false);
       setIsSavingDetail(false);
       return;
     }
 
-    if (
-      !isEditingDetail ||
-      detailDraft?.conversationId !== selectedCard.id
-    ) {
-      setDetailDraft(buildDetailDraft(selectedCard, selectedDetail, selectedPipelineId));
-    }
+    setDetailDraft((current) =>
+      current?.conversationId === selectedCard.id
+        ? current
+        : buildDetailDraft(selectedCard, selectedDetail, selectedPipelineId),
+    );
   }, [
-    detailDraft?.conversationId,
-    isEditingDetail,
     selectedCard,
     selectedDetail,
     selectedPipelineId,
   ]);
+
+  useEffect(() => {
+    setAttachmentFiles([]);
+    setAttachmentNote("");
+    setAttachmentError(null);
+    setAttachmentSuccess(null);
+    if (attachmentInputRef.current) {
+      attachmentInputRef.current.value = "";
+    }
+  }, [selectedCardId]);
 
   const loadBoard = useCallback(async (
     pipelineId?: number | null,
@@ -740,70 +880,225 @@ export function KanbanDashboard() {
       return;
     }
 
-    const scroller = document.querySelector<HTMLElement>(".kanban-scroll");
+    const scroller = scrollerRef.current;
     if (!scroller) {
       return;
     }
 
     let frame = 0;
+    let measureFrame = 0;
+    let pendingScrollTop = scroller.scrollTop;
+    let lastAppliedScrollTop = scroller.scrollTop;
 
     const syncColumnHeaders = () => {
       frame = 0;
-      const targetTop = scroller.getBoundingClientRect().top + 12;
+      lastAppliedScrollTop = pendingScrollTop;
+      const targetTop = pendingScrollTop + 12;
+      const boardBottom = stickyBoardBottomRef.current;
 
-      document.querySelectorAll<HTMLElement>(".react-kanban-column").forEach((column) => {
-        const headerHost = column.firstElementChild as HTMLElement | null;
-        if (!headerHost) {
-          return;
-        }
-
-        if (!headerHost.dataset.baseOffset) {
-          headerHost.dataset.baseOffset = String(headerHost.offsetTop);
-        }
-
+      stickyColumnsRef.current.forEach(({ headerHost, naturalTop }) => {
         const maxTranslate = Math.max(
-          column.offsetHeight - headerHost.offsetHeight - 12,
+          boardBottom - headerHost.offsetHeight - 12 - naturalTop,
           0,
         );
-        const naturalTop =
-          column.getBoundingClientRect().top +
-          Number(headerHost.dataset.baseOffset ?? 0);
         const translateY = Math.min(
           Math.max(targetTop - naturalTop, 0),
           maxTranslate,
         );
 
-        headerHost.style.transform = `translateY(${translateY}px)`;
+        headerHost.style.transform = translateY
+          ? `translateY(${translateY}px)`
+          : "";
       });
     };
 
     const requestSync = () => {
-      if (frame) {
-        window.cancelAnimationFrame(frame);
+      const nextScrollTop = scroller.scrollTop;
+
+      if (nextScrollTop === pendingScrollTop) {
+        return;
       }
-      frame = window.requestAnimationFrame(syncColumnHeaders);
+
+      pendingScrollTop = nextScrollTop;
+
+      if (!frame && pendingScrollTop !== lastAppliedScrollTop) {
+        frame = window.requestAnimationFrame(syncColumnHeaders);
+      }
     };
 
-    requestSync();
+    const measureColumnGeometry = () => {
+      measureFrame = 0;
+      const columns = Array.from(
+        scroller.querySelectorAll<HTMLElement>(".react-kanban-column"),
+      );
+      const boardHost = scroller.querySelector<HTMLElement>(".react-kanban-board");
+      const scrollerRect = scroller.getBoundingClientRect();
+      const boardRect = boardHost?.getBoundingClientRect();
+      const boardTop = boardRect
+        ? boardRect.top - scrollerRect.top + scroller.scrollTop
+        : 0;
+      const boardHeight = Math.max(
+        boardHost?.scrollHeight ?? 0,
+        boardHost?.offsetHeight ?? 0,
+        columns.reduce(
+          (maxHeight, column) =>
+            Math.max(maxHeight, column.scrollHeight, column.offsetHeight),
+          0,
+        ),
+      );
+
+      stickyBoardBottomRef.current = boardTop + boardHeight;
+      pendingScrollTop = scroller.scrollTop;
+      lastAppliedScrollTop = scroller.scrollTop;
+      stickyColumnsRef.current = columns.flatMap((column) => {
+        const headerHost = column.firstElementChild as HTMLElement | null;
+        if (!headerHost) {
+          return [];
+        }
+
+        const columnRect = column.getBoundingClientRect();
+
+        return [
+          {
+            headerHost,
+            naturalTop:
+              columnRect.top -
+              scrollerRect.top +
+              scroller.scrollTop +
+              headerHost.offsetTop,
+          },
+        ];
+      });
+
+      syncColumnHeaders();
+    };
+
+    const requestMeasure = () => {
+      if (measureFrame) {
+        window.cancelAnimationFrame(measureFrame);
+      }
+      measureFrame = window.requestAnimationFrame(measureColumnGeometry);
+    };
+
+    requestMeasure();
     const syncTimers = [
-      window.setTimeout(requestSync, 0),
-      window.setTimeout(requestSync, 160),
-      window.setTimeout(requestSync, 450),
+      window.setTimeout(requestMeasure, 0),
+      window.setTimeout(requestMeasure, 160),
+      window.setTimeout(requestMeasure, 450),
     ];
     scroller.addEventListener("scroll", requestSync, { passive: true });
-    window.addEventListener("resize", requestSync);
+    window.addEventListener("resize", requestMeasure);
 
     return () => {
+      stickyColumnsRef.current.forEach(({ headerHost }) => {
+        headerHost.style.transform = "";
+      });
       scroller.removeEventListener("scroll", requestSync);
-      window.removeEventListener("resize", requestSync);
+      window.removeEventListener("resize", requestMeasure);
       clearTimeout(syncTimers[0]);
       clearTimeout(syncTimers[1]);
       clearTimeout(syncTimers[2]);
       if (frame) {
         window.cancelAnimationFrame(frame);
       }
+      if (measureFrame) {
+        window.cancelAnimationFrame(measureFrame);
+      }
+      stickyColumnsRef.current = [];
+      stickyBoardBottomRef.current = 0;
     };
   }, [board, isLoading]);
+
+  const stopBoardPan = useCallback(
+    (pointerId?: number) => {
+      const currentPan = boardPanRef.current;
+      const scroller = scrollerRef.current;
+
+      if (!currentPan) {
+        return;
+      }
+
+      if (pointerId !== undefined && currentPan.pointerId !== pointerId) {
+        return;
+      }
+
+      if (currentPan.frameId) {
+        window.cancelAnimationFrame(currentPan.frameId);
+      }
+
+      if (scroller && scroller.hasPointerCapture(currentPan.pointerId)) {
+        scroller.releasePointerCapture(currentPan.pointerId);
+      }
+
+      boardPanRef.current = null;
+      setIsBoardPanning(false);
+    },
+    [],
+  );
+
+  const handleBoardPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0 || !canStartBoardPan(event.target)) {
+        return;
+      }
+
+      const scroller = scrollerRef.current;
+      if (!scroller) {
+        return;
+      }
+
+      boardPanRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        scrollLeft: scroller.scrollLeft,
+        frameId: null,
+        moved: false,
+        targetScrollLeft: scroller.scrollLeft,
+      };
+      scroller.setPointerCapture(event.pointerId);
+      event.preventDefault();
+    },
+    [],
+  );
+
+  const handleBoardPointerMove = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const currentPan = boardPanRef.current;
+      const scroller = scrollerRef.current;
+
+      if (!currentPan || !scroller || currentPan.pointerId !== event.pointerId) {
+        return;
+      }
+
+      const deltaX = event.clientX - currentPan.startX;
+      const deltaY = event.clientY - currentPan.startY;
+
+      if (!currentPan.moved) {
+        if (Math.abs(deltaX) < 4 && Math.abs(deltaY) < 4) {
+          return;
+        }
+
+        currentPan.moved = true;
+        setIsBoardPanning(true);
+      }
+
+      currentPan.targetScrollLeft = currentPan.scrollLeft - deltaX;
+      if (currentPan.frameId === null) {
+        currentPan.frameId = window.requestAnimationFrame(() => {
+          const activePan = boardPanRef.current;
+          if (!activePan || activePan.pointerId !== event.pointerId) {
+            return;
+          }
+
+          scroller.scrollLeft = activePan.targetScrollLeft;
+          activePan.frameId = null;
+        });
+      }
+      event.preventDefault();
+    },
+    [],
+  );
 
   const openCardSummary = useCallback(
     async (card: KanbanCardData) => {
@@ -870,6 +1165,7 @@ export function KanbanDashboard() {
         return {
           ...current,
           title: isLeadNameField(sectionTitle, label) ? value : current.title,
+          price: isPriceField(label) ? value : current.price,
           fields: nextFields,
         };
       });
@@ -903,6 +1199,94 @@ export function KanbanDashboard() {
     [payload],
   );
 
+  const resetDetailDraft = useCallback(() => {
+    if (!selectedCard || !selectedDetail || !selectedPipelineId) {
+      return;
+    }
+
+    setDetailDraft(buildDetailDraft(selectedCard, selectedDetail, selectedPipelineId));
+    setDetailError(null);
+  }, [selectedCard, selectedDetail, selectedPipelineId]);
+
+  const resetAttachmentComposer = useCallback(() => {
+    setAttachmentFiles([]);
+    setAttachmentNote("");
+    setAttachmentError(null);
+    if (attachmentInputRef.current) {
+      attachmentInputRef.current.value = "";
+    }
+  }, []);
+
+  const handleAttachmentSelection = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      setAttachmentFiles(Array.from(event.target.files ?? []));
+      setAttachmentError(null);
+      setAttachmentSuccess(null);
+    },
+    [],
+  );
+
+  const handleAttachmentUpload = useCallback(async () => {
+    if (!selectedCard) {
+      return;
+    }
+
+    const files = attachmentFiles.filter((file) => file.size > 0);
+    if (!files.length) {
+      setAttachmentError("Selecione pelo menos um arquivo para anexar.");
+      return;
+    }
+
+    const activeKey = appKey || resolveAppKey();
+    if (!activeKey) {
+      setAttachmentError("Falta o appKey no hash da URL do dashboard app.");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.set("conversationId", String(selectedCard.id));
+    formData.set("note", attachmentNote.trim());
+    files.forEach((file) => {
+      formData.append("attachments[]", file, file.name);
+    });
+
+    setIsUploadingAttachment(true);
+    setAttachmentError(null);
+    setAttachmentSuccess(null);
+
+    try {
+      const response = await fetch("/api/board/card", {
+        method: "POST",
+        headers: {
+          "x-kanban-app-key": activeKey,
+        },
+        body: formData,
+      });
+      const result = (await response.json()) as {
+        error?: string;
+        message?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(result.error ?? "Nao foi possivel anexar os arquivos.");
+      }
+
+      resetAttachmentComposer();
+      setAttachmentSuccess(
+        result.message ??
+          `${files.length} arquivo${files.length === 1 ? "" : "s"} anexado${files.length === 1 ? "" : "s"} na conversa.`,
+      );
+    } catch (uploadError) {
+      setAttachmentError(
+        uploadError instanceof Error
+          ? uploadError.message
+          : "Nao foi possivel anexar os arquivos.",
+      );
+    } finally {
+      setIsUploadingAttachment(false);
+    }
+  }, [appKey, attachmentFiles, attachmentNote, resetAttachmentComposer, selectedCard]);
+
   const handleSaveDetail = useCallback(async () => {
     if (!detailDraft || !selectedCard) {
       return;
@@ -913,8 +1297,6 @@ export function KanbanDashboard() {
       setDetailError("Falta o appKey no hash da URL do dashboard app.");
       return;
     }
-
-    const firstPriceField = detailDraft.fields.find((field) => isPriceField(field.label));
 
     setIsSavingDetail(true);
     setDetailError(null);
@@ -932,7 +1314,9 @@ export function KanbanDashboard() {
           pipelineId: detailDraft.pipelineId,
           stageName: detailDraft.stageName,
           status: detailDraft.status,
-          price: firstPriceField?.value ?? "",
+          responsibleKey: detailDraft.responsibleKey,
+          priority: detailDraft.priority,
+          price: detailDraft.price,
           fields: detailDraft.fields,
         }),
       });
@@ -951,7 +1335,6 @@ export function KanbanDashboard() {
       }));
       setSelectedCardId(detailDraft.conversationId);
       await loadBoard(detailDraft.pipelineId, true, true);
-      setIsEditingDetail(false);
     } catch (saveError) {
       setDetailError(
         saveError instanceof Error
@@ -1107,24 +1490,37 @@ export function KanbanDashboard() {
 
   return (
     <main className="min-h-screen bg-slate-100 text-slate-950">
-      <div className="mx-auto flex max-w-[1880px] flex-col gap-4 px-4 py-4 md:px-5">
-        <header className="sticky top-3 z-20 rounded-[22px] border border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div className="min-w-0">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+      <div className="mx-auto flex max-w-[1880px] flex-col gap-2 px-3 py-2 md:px-4">
+        <header className="sticky top-2 z-20 rounded-[18px] border border-slate-200 bg-white/96 px-3 py-2 shadow-sm backdrop-blur">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-400">
                 CRMnaMao
               </p>
-              <h1 className="mt-1 font-[family:var(--font-display)] text-2xl leading-none text-slate-950">
+              <h1 className="font-[family:var(--font-display)] text-[22px] leading-none text-slate-950">
                 Funis
               </h1>
             </div>
 
-            <label className="flex min-w-[240px] flex-col gap-1 text-sm text-slate-600 md:max-w-[360px]">
-              <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                Funil
+            <div className="flex flex-1 flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
+              <span className="rounded-full bg-slate-50 px-2 py-1">
+                Funil <span className="font-semibold text-slate-900">{formatMoney(boardSummary.totalValue)}</span>
               </span>
+              <span className="rounded-full bg-emerald-50 px-2 py-1 text-emerald-700">
+                Ganha <span className="font-semibold">{formatMoney(boardSummary.wonValue)}</span>
+              </span>
+              <span className="rounded-full bg-rose-50 px-2 py-1 text-rose-700">
+                Perdida <span className="font-semibold">{formatMoney(boardSummary.lostValue)}</span>
+              </span>
+              <span className="rounded-full bg-sky-50 px-2 py-1 text-sky-700">
+                Geral <span className="font-semibold">{formatMoney(payload?.metrics.overallValue)}</span>
+              </span>
+            </div>
+
+            <label className="ml-auto flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+              <span>Funil</span>
               <select
-                className="h-10 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-900 outline-none transition focus:border-sky-400 disabled:cursor-not-allowed disabled:opacity-60"
+                className="h-9 min-w-[220px] rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-slate-900 outline-none transition focus:border-sky-400 disabled:cursor-not-allowed disabled:opacity-60 md:min-w-[280px]"
                 disabled={isLoading || !payload?.pipelines.length}
                 onChange={handlePipelineChange}
                 value={selectedPipelineId ?? undefined}
@@ -1138,16 +1534,6 @@ export function KanbanDashboard() {
               </select>
             </label>
           </div>
-
-          <p className="mt-3 border-t border-slate-100 pt-3 text-xs text-slate-500">
-            Funil <span className="font-semibold text-slate-900">{formatMoney(boardSummary.totalValue)}</span>
-            {" | "}
-            Ganha <span className="font-semibold text-emerald-700">{formatMoney(boardSummary.wonValue)}</span>
-            {" | "}
-            Perdida <span className="font-semibold text-rose-700">{formatMoney(boardSummary.lostValue)}</span>
-            {" | "}
-            Geral <span className="font-semibold text-sky-700">{formatMoney(payload?.metrics.overallValue)}</span>
-          </p>
         </header>
 
         {error ? (
@@ -1162,7 +1548,21 @@ export function KanbanDashboard() {
               <LoadingBoard />
             </div>
           ) : (
-            <div className="kanban-scroll h-[calc(100vh-12.5rem)] min-h-[560px] overflow-auto p-3 md:h-[calc(100vh-13rem)] md:p-4">
+            <div
+              className={`kanban-scroll h-[calc(100vh-7.4rem)] min-h-[560px] overflow-auto p-1.5 md:h-[calc(100vh-7.9rem)] md:p-2 ${isBoardPanning ? "kanban-scroll--panning" : ""}`}
+              onLostPointerCapture={(event) => {
+                stopBoardPan(event.pointerId);
+              }}
+              onPointerCancel={(event) => {
+                stopBoardPan(event.pointerId);
+              }}
+              onPointerDown={handleBoardPointerDown}
+              onPointerMove={handleBoardPointerMove}
+              onPointerUp={(event) => {
+                stopBoardPan(event.pointerId);
+              }}
+              ref={scrollerRef}
+            >
               <div className="kanban-shell">
                 <ControlledBoard<BoardCard>
                 allowAddCard={false}
@@ -1173,107 +1573,125 @@ export function KanbanDashboard() {
                 disableColumnDrag
                 onCardDragEnd={handleCardDragEnd}
                 renderCard={(card, options) => {
-                  const price = formatMoney(card.record.price ?? 0);
+                  const hasPrice =
+                    typeof card.record.price === "number" && card.record.price > 0;
+                  const price = hasPrice ? formatMoney(card.record.price) : null;
                   const contactMeta = buildContactMeta(card.record);
-                  const ownerMeta = buildOwnerMeta(card.record);
+                  const responsibleLabel = buildResponsibleLabel(card.record);
+                  const signalText = buildCardSignal(card.record);
+                  const secondaryMeta =
+                    signalText && signalText !== contactMeta ? contactMeta : null;
                   const channelTone = getChannelTone(card.record.channelLabel);
+                  const priorityTone = getPriorityTone(card.record.priority);
                   const isMoving = movingCardId === card.id;
                   const isSelected = selectedCardId === card.record.id;
 
                   return (
                     <article
-                      className={`kanban-card group flex min-h-[168px] flex-col rounded-[20px] border border-slate-200 bg-white px-4 py-3 text-left shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition select-none ${options.dragging ? "cursor-grabbing opacity-95" : "cursor-grab"} ${isMoving ? "ring-2 ring-slate-300" : ""} ${isSelected ? "border-slate-950 ring-1 ring-slate-950/10" : "hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_14px_28px_rgba(15,23,42,0.10)]"}`}
+                      aria-label={`Abrir resumo de ${card.record.title}`}
+                      className={`kanban-card group flex h-[110px] w-full min-w-0 flex-col overflow-hidden rounded-[16px] border border-slate-200/80 bg-white/95 px-2.5 py-2 text-left shadow-[0_1px_4px_rgba(15,23,42,0.03)] transition select-none ${options.dragging ? "cursor-grabbing opacity-95" : "cursor-grab"} ${isMoving ? "ring-2 ring-slate-300" : ""} ${isSelected ? "border-slate-950 ring-1 ring-slate-950/10" : "hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_4px_10px_rgba(15,23,42,0.05)]"}`}
+                      onPointerDown={(event) => {
+                        event.currentTarget.dataset.pressX = String(event.clientX);
+                        event.currentTarget.dataset.pressY = String(event.clientY);
+                      }}
+                      onPointerUp={(event) => {
+                        if (options.dragging) {
+                          return;
+                        }
+
+                        const pressX = Number(
+                          event.currentTarget.dataset.pressX ?? event.clientX,
+                        );
+                        const pressY = Number(
+                          event.currentTarget.dataset.pressY ?? event.clientY,
+                        );
+                        const movedTooFar =
+                          Math.abs(event.clientX - pressX) > 6 ||
+                          Math.abs(event.clientY - pressY) > 6;
+
+                        if (!movedTooFar) {
+                          void openCardSummary(card.record);
+                        }
+                      }}
                     >
-                      <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start justify-between gap-1.5">
                         <div className="min-w-0">
-                          <button
-                            aria-pressed={isSelected}
-                            className="block max-w-full truncate text-left text-[16px] font-bold leading-tight text-slate-950 transition hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+                          <h2 className="block max-w-full truncate text-left text-[13px] font-bold leading-tight text-slate-950 transition group-hover:text-slate-700">
+                            {card.record.title}
+                          </h2>
+                        </div>
+
+                        <div className="flex shrink-0 items-center gap-1">
+                          {price ? (
+                            <span className="inline-flex items-center px-[2px] py-0.5 text-[10px] font-semibold text-slate-500">
+                              {price}
+                            </span>
+                          ) : null}
+                          <a
+                            className="flex h-[20px] w-[20px] shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                            href={card.record.openUrl}
+                            onPointerDown={(event) => {
+                              event.stopPropagation();
+                            }}
+                            onPointerUp={(event) => {
+                              event.stopPropagation();
+                            }}
                             onClick={(event) => {
                               event.stopPropagation();
-                              void openCardSummary(card.record);
                             }}
-                            type="button"
+                            rel="noreferrer"
+                            target="_blank"
                           >
-                            {card.record.title}
-                          </button>
-                          <p className="mt-1 truncate text-[12px] text-slate-500">
-                            {contactMeta}
-                          </p>
+                            <ArrowIcon />
+                          </a>
                         </div>
-
-                        <a
-                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-500 transition hover:bg-slate-100 hover:text-slate-950"
-                          href={card.record.openUrl}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                          }}
-                          rel="noreferrer"
-                          target="_blank"
-                        >
-                          <ArrowIcon />
-                        </a>
                       </div>
 
-                      <div className="mt-3 flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                          <Avatar
-                            imageSrc={card.record.contactThumbnail}
-                            label={card.record.title}
-                            overlay={
-                              <ChannelOverlay channelLabel={card.record.channelLabel} />
-                            }
-                            size="lg"
-                          />
-                          <div className="min-w-0">
-                            <span
-                              className={`inline-flex items-center gap-2 rounded-[8px] px-2.5 py-1 text-[12px] font-medium ${channelTone.badge}`}
-                            >
-                              <span
-                                className={`h-2.5 w-2.5 rounded-full ${channelTone.dot}`}
-                              />
+                      <div className="mt-1.5 grid grid-cols-[32px_minmax(0,1fr)] items-center gap-x-2">
+                        <Avatar
+                          imageSrc={card.record.contactThumbnail}
+                          label={card.record.title}
+                          overlay={
+                            <ChannelOverlay channelLabel={card.record.channelLabel} />
+                          }
+                          size="lg"
+                        />
+                        <div className="min-w-0">
+                          <p className="truncate text-[10px] font-medium text-slate-600">
+                            {signalText || contactMeta}
+                          </p>
+                          <div className="mt-1 flex min-w-0 items-center gap-1.5 text-[9px] text-slate-500">
+                            <span className="inline-flex shrink-0 items-center gap-1 text-slate-600">
+                              <span className={`h-1.5 w-1.5 rounded-full ${channelTone.dot}`} />
                               {card.record.channelLabel.toLowerCase()}
                             </span>
-                            <p className="mt-2 truncate text-[12px] text-slate-500">
-                              {ownerMeta}
-                            </p>
+                            <span className="h-1 w-1 shrink-0 rounded-full bg-slate-200" />
+                            <span className="truncate text-slate-500">
+                              {responsibleLabel}
+                            </span>
+                            <span className="h-1 w-1 shrink-0 rounded-full bg-slate-200" />
+                            <span
+                              className={`inline-flex shrink-0 items-center gap-1 font-semibold ${priorityTone.text}`}
+                            >
+                              <span className={`h-1.5 w-1.5 rounded-full ${priorityTone.dot}`} />
+                              {priorityTone.label}
+                            </span>
                           </div>
-                        </div>
-
-                        <div className="flex flex-col items-end gap-2">
-                          <Avatar label={ownerMeta} size="sm" />
-                          <p className="text-[12px] font-semibold text-violet-700">
-                            {price}
-                          </p>
                         </div>
                       </div>
 
-                      {card.record.highlights.length ? (
-                        <div className="mt-3 flex flex-wrap gap-1.5">
-                          {card.record.highlights.slice(0, 2).map((highlight) => (
-                            <span
-                              key={`${card.id}-${highlight.label}`}
-                              className="inline-flex max-w-full items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-700"
-                            >
-                              <span className="truncate font-medium text-slate-500">
-                                {highlight.label}
-                              </span>
-                              <span className="truncate font-semibold text-slate-800">
-                                {highlight.value}
-                              </span>
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="mt-3 h-8" />
-                      )}
+                      <div className="mt-1 h-[14px] overflow-hidden">
+                        <p className="truncate text-[9px] text-slate-400">
+                          {secondaryMeta ?? ""}
+                        </p>
+                      </div>
 
-                      <div className="mt-auto flex items-center justify-between gap-2 border-t border-slate-100 pt-3 text-[12px] text-slate-500">
+                      <div className="mt-auto flex items-center justify-between gap-1 border-t border-slate-100/80 pt-1.5 text-[9px] text-slate-500">
                         <span
-                          className={`inline-flex items-center gap-1.5 font-semibold ${getUnreadTone(card.record.unreadCount)}`}
+                          className={`inline-flex items-center gap-1 font-semibold ${getUnreadTone(card.record.unreadCount)}`}
                         >
                           <span
-                            className="h-2.5 w-2.5 rounded-full"
+                            className="h-1.5 w-1.5 rounded-full"
                             style={{
                               backgroundColor:
                                 card.record.unreadCount > 0
@@ -1286,7 +1704,7 @@ export function KanbanDashboard() {
                             : card.record.conversationStatus}
                         </span>
 
-                        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-slate-700">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-[6px] py-0.5 text-slate-700">
                           <CalendarIcon />
                           {formatShortDate(card.record.createdAt)}
                         </span>
@@ -1303,28 +1721,25 @@ export function KanbanDashboard() {
                   const typedColumn = column as BoardColumn;
 
                   return (
-                    <header className="kanban-column-header rounded-[22px] border border-slate-200 bg-white px-5 py-4 shadow-sm">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex min-w-0 items-center gap-2.5">
+                    <header className="kanban-column-header rounded-[16px] border border-slate-200 bg-white px-3 py-2 shadow-sm">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex min-w-0 items-center gap-2">
                           <span
-                            className="h-2.5 w-2.5 shrink-0 rounded-full"
+                            className="h-2 w-2 shrink-0 rounded-full"
                             style={{ backgroundColor: typedColumn.color }}
                           />
-                          <h3 className="truncate text-[18px] font-bold text-slate-950">
+                          <h3 className="truncate text-[14px] font-bold text-slate-950">
                             {typedColumn.title}
                           </h3>
                         </div>
-                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[13px] font-bold text-slate-700">
-                          {typedColumn.cards.length}
-                        </span>
-                      </div>
-
-                      <div className="mt-2 flex items-center justify-between gap-3 text-[12px] text-slate-500">
-                        <span>
-                          {typedColumn.cards.length} negocio
-                          {typedColumn.cards.length === 1 ? "" : "s"}
-                        </span>
-                        <span>{formatMoney(columnValue(typedColumn))}</span>
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          <span className="text-[10px] font-medium text-slate-400">
+                            {formatMoney(columnValue(typedColumn))}
+                          </span>
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-700">
+                            {typedColumn.cards.length}
+                          </span>
+                        </div>
                       </div>
                     </header>
                   );
@@ -1396,20 +1811,113 @@ export function KanbanDashboard() {
                 <span className="rounded-full bg-amber-50 px-3 py-1 text-[11px] font-semibold text-amber-900">
                   Na etapa {formatStageDuration(selectedCard.stageEnteredAt)}
                 </span>
-                <span className="rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-semibold text-emerald-800">
-                  Valor {formatMoney(selectedCard.price ?? 0)}
-                </span>
               </div>
 
               {selectedDetail ? (
-                <div className="mt-4 grid gap-2">
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  <label className="grid gap-1.5">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                      Valor
+                    </span>
+                    <input
+                      className="rounded-[14px] border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                      disabled={!detailDraft || isSavingDetail}
+                      inputMode="decimal"
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setDetailDraft((current) => {
+                          if (!current) {
+                            return current;
+                          }
+
+                          return {
+                            ...current,
+                            price: value,
+                            fields: current.fields.map((field) =>
+                              isPriceField(field.label)
+                                ? {
+                                    ...field,
+                                    value,
+                                  }
+                                : field,
+                            ),
+                          };
+                        });
+                      }}
+                      placeholder="Ex.: 2500"
+                      type="text"
+                      value={detailDraft?.price ?? selectedDetail.quickEdit.price}
+                    />
+                  </label>
+
+                  <label className="grid gap-1.5">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                      Responsavel
+                    </span>
+                    <select
+                      className="w-full rounded-[14px] border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                      disabled={!detailDraft || isSavingDetail}
+                      onChange={(event) => {
+                        setDetailDraft((current) =>
+                          current
+                            ? {
+                                ...current,
+                                responsibleKey: event.target.value,
+                              }
+                            : current,
+                        );
+                      }}
+                      value={
+                        detailDraft?.responsibleKey ??
+                        selectedDetail.quickEdit.responsibleKey
+                      }
+                    >
+                      {selectedDetail.quickEdit.responsibleOptions.map((option) => (
+                        <option key={option.key} value={option.key}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="grid gap-1.5">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                      Criticidade
+                    </span>
+                    <select
+                      className="w-full rounded-[14px] border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                      disabled={!detailDraft || isSavingDetail}
+                      onChange={(event) => {
+                        setDetailDraft((current) =>
+                          current
+                            ? {
+                                ...current,
+                                priority: event.target.value as ConversationPriorityValue,
+                              }
+                            : current,
+                        );
+                      }}
+                      value={detailDraft?.priority ?? selectedDetail.quickEdit.priority}
+                    >
+                      {PRIORITY_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              ) : null}
+
+              {selectedDetail ? (
+                <div className="mt-3 grid gap-2">
                   <label className="grid gap-1.5">
                     <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                       Titulo do card
                     </span>
                     <input
                       className="rounded-[14px] border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
-                      disabled={!isEditingDetail || !detailDraft || isSavingDetail}
+                      disabled={!detailDraft || isSavingDetail}
                       onChange={(event) => {
                         setDetailDraft((current) => {
                           if (!current) {
@@ -1437,70 +1945,44 @@ export function KanbanDashboard() {
               ) : null}
 
               <div className="mt-4 flex flex-wrap gap-2">
-                {isEditingDetail ? (
-                  <>
-                    <button
-                      className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-950 hover:bg-slate-950 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-                      disabled={isSavingDetail}
-                      onClick={() => {
-                        if (!selectedDetail || !selectedPipelineId) {
-                          return;
-                        }
-
-                        setDetailDraft(
-                          buildDetailDraft(selectedCard, selectedDetail, selectedPipelineId),
-                        );
-                        setIsEditingDetail(false);
-                      }}
-                      type="button"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      className="rounded-full bg-slate-950 px-4 py-2 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                      disabled={!detailDraft || isSavingDetail}
-                      onClick={() => {
-                        void handleSaveDetail();
-                      }}
-                      type="button"
-                    >
-                      {isSavingDetail ? "Salvando..." : "Salvar"}
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button
-                      className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-950 hover:bg-slate-950 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-                      disabled={!selectedDetail || isDetailLoading}
-                      onClick={() => {
-                        setIsEditingDetail(true);
-                      }}
-                      type="button"
-                    >
-                      Editar card
-                    </button>
-                    <button
-                      className="rounded-full bg-emerald-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-                      disabled={!wonColumn || movingCardId === String(selectedCard.id) || selectedCard.stageKind === "won"}
-                      onClick={() => {
-                        void moveSelectedCardToOutcome("won");
-                      }}
-                      type="button"
-                    >
-                      Venda ganha
-                    </button>
-                    <button
-                      className="rounded-full bg-rose-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
-                      disabled={!lostColumn || movingCardId === String(selectedCard.id) || selectedCard.stageKind === "lost"}
-                      onClick={() => {
-                        void moveSelectedCardToOutcome("lost");
-                      }}
-                      type="button"
-                    >
-                      Venda perdida
-                    </button>
-                  </>
-                )}
+                <button
+                  className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-950 hover:bg-slate-950 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={!detailDraft || isSavingDetail}
+                  onClick={resetDetailDraft}
+                  type="button"
+                >
+                  Descartar alteracoes
+                </button>
+                <button
+                  className="rounded-full bg-slate-950 px-4 py-2 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={!detailDraft || isSavingDetail}
+                  onClick={() => {
+                    void handleSaveDetail();
+                  }}
+                  type="button"
+                >
+                  {isSavingDetail ? "Salvando..." : "Salvar"}
+                </button>
+                <button
+                  className="rounded-full bg-emerald-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={!wonColumn || movingCardId === String(selectedCard.id) || selectedCard.stageKind === "won"}
+                  onClick={() => {
+                    void moveSelectedCardToOutcome("won");
+                  }}
+                  type="button"
+                >
+                  Venda ganha
+                </button>
+                <button
+                  className="rounded-full bg-rose-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={!lostColumn || movingCardId === String(selectedCard.id) || selectedCard.stageKind === "lost"}
+                  onClick={() => {
+                    void moveSelectedCardToOutcome("lost");
+                  }}
+                  type="button"
+                >
+                  Venda perdida
+                </button>
                 <a
                   className="inline-flex rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-800 transition hover:border-slate-950 hover:bg-slate-950 hover:text-white"
                   href={selectedCard.openUrl}
@@ -1519,6 +2001,108 @@ export function KanbanDashboard() {
                 </section>
               ) : null}
 
+              <section className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      Arquivos
+                    </h3>
+                    <p className="mt-2 max-w-xl text-sm text-slate-600">
+                      Os anexos entram na conversa como nota interna do Chatwoot.
+                    </p>
+                  </div>
+
+                  <input
+                    ref={attachmentInputRef}
+                    className="hidden"
+                    multiple
+                    onChange={handleAttachmentSelection}
+                    type="file"
+                  />
+                  <button
+                    className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-950 hover:bg-slate-950 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={isUploadingAttachment}
+                    onClick={() => {
+                      attachmentInputRef.current?.click();
+                    }}
+                    type="button"
+                  >
+                    Selecionar arquivos
+                  </button>
+                </div>
+
+                <label className="mt-4 block">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                    Observacao do anexo
+                  </span>
+                  <textarea
+                    className="mt-2 min-h-[88px] w-full rounded-[16px] border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                    disabled={isUploadingAttachment}
+                    onChange={(event) => {
+                      setAttachmentNote(event.target.value);
+                      setAttachmentSuccess(null);
+                    }}
+                    placeholder="Opcional. Se ficar vazio, o kanban envia uma nota curta de anexo."
+                    value={attachmentNote}
+                  />
+                </label>
+
+                {attachmentFiles.length ? (
+                  <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                    {attachmentFiles.map((file) => (
+                      <div
+                        key={`${file.name}-${file.lastModified}-${file.size}`}
+                        className="rounded-[18px] bg-white px-3 py-2.5 shadow-sm"
+                      >
+                        <p className="truncate text-sm font-medium text-slate-900">
+                          {file.name}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {formatFileSize(file.size)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-4 text-sm text-slate-500">
+                    Nenhum arquivo selecionado.
+                  </p>
+                )}
+
+                {attachmentError ? (
+                  <p className="mt-4 rounded-[18px] border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                    {attachmentError}
+                  </p>
+                ) : null}
+
+                {attachmentSuccess ? (
+                  <p className="mt-4 rounded-[18px] border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                    {attachmentSuccess}
+                  </p>
+                ) : null}
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    className="rounded-full bg-slate-950 px-4 py-2 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={!attachmentFiles.length || isUploadingAttachment}
+                    onClick={() => {
+                      void handleAttachmentUpload();
+                    }}
+                    type="button"
+                  >
+                    {isUploadingAttachment ? "Anexando..." : "Anexar arquivos"}
+                  </button>
+                  <button
+                    className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-950 hover:bg-slate-950 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={!attachmentFiles.length || isUploadingAttachment}
+                    onClick={resetAttachmentComposer}
+                    type="button"
+                  >
+                    Limpar selecao
+                  </button>
+                </div>
+              </section>
+
               {isDetailLoading && !selectedDetail ? (
                 <DetailLoadingState />
               ) : selectedDetail ? (
@@ -1530,24 +2114,33 @@ export function KanbanDashboard() {
                     </section>
                   ) : null}
 
-                  {selectedDetail.sections.map((section) => (
-                    <section
-                      key={section.id}
-                      className="rounded-[24px] border border-slate-200 bg-slate-50 p-4"
-                    >
-                      <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                        {section.title}
-                      </h3>
-                      <dl className="mt-4 grid gap-3 sm:grid-cols-2">
-                        {section.fields.map((field) => (
+                  {selectedDetail.sections.map((section) => {
+                    const visibleFields = section.fields.filter(
+                      (field) => !isPriceField(field.label),
+                    );
+
+                    if (!visibleFields.length) {
+                      return null;
+                    }
+
+                    return (
+                      <section
+                        key={section.id}
+                        className="rounded-[24px] border border-slate-200 bg-slate-50 p-4"
+                      >
+                        <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          {section.title}
+                        </h3>
+                        <dl className="mt-4 grid gap-3 sm:grid-cols-2">
+                          {visibleFields.map((field, fieldIndex) => (
                           <div
-                            key={`${section.id}-${field.label}-${field.value}`}
+                            key={`${section.id}-${field.label}-${field.value}-${fieldIndex}`}
                             className="rounded-[18px] bg-white p-3 shadow-sm"
                           >
                             <dt className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                               {field.label}
                             </dt>
-                            {isEditingDetail && detailDraft ? (
+                            {detailDraft ? (
                               <dd className="mt-2">
                                 {isPipelineField(field.label) ? (
                                   <select
@@ -1640,10 +2233,11 @@ export function KanbanDashboard() {
                               </dd>
                             )}
                           </div>
-                        ))}
-                      </dl>
-                    </section>
-                  ))}
+                          ))}
+                        </dl>
+                      </section>
+                    );
+                  })}
                 </div>
               ) : (
                 <section className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
@@ -1657,3 +2251,6 @@ export function KanbanDashboard() {
     </main>
   );
 }
+
+
+

@@ -64,6 +64,24 @@ function normalizeOverrides(value: unknown): KanbanCardOverrides {
   };
 }
 
+function dedupeSectionFields(section: KanbanDetailSection) {
+  const seen = new Set<string>();
+  const fields = section.fields.filter((field) => {
+    const key = `${normalizeKey(field.label)}::${normalizeKey(field.value)}`;
+    if (seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
+
+  return {
+    ...section,
+    fields,
+  };
+}
+
 export function parseCardOverrides(value: unknown) {
   if (typeof value === "string" && value.trim()) {
     try {
@@ -158,6 +176,8 @@ export function applyCardOverrides(
   return {
     ...detail,
     leadName: overrides.title ?? detail.leadName,
-    sections: orderedSections.filter((section) => section.fields.length > 0),
+    sections: orderedSections
+      .filter((section) => section.fields.length > 0)
+      .map(dedupeSectionFields),
   };
 }

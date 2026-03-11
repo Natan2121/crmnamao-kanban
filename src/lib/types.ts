@@ -46,6 +46,19 @@ export interface KanbanDetailSection {
   fields: KanbanDetailField[];
 }
 
+export interface KanbanResponsibleOption {
+  key: string;
+  label: string;
+  type: "none" | "agent" | "team";
+}
+
+export interface KanbanCardQuickEdit {
+  price: string;
+  responsibleKey: string;
+  priority: ConversationPriorityValue;
+  responsibleOptions: KanbanResponsibleOption[];
+}
+
 export interface KanbanCardFieldOverride {
   sectionTitle: string;
   label: string;
@@ -58,6 +71,27 @@ export interface KanbanCardOverrides {
 }
 
 export type ConversationStatusValue = "open" | "pending" | "resolved" | "snoozed";
+export type ConversationPriorityValue = "urgent" | "high" | "medium" | "low" | "none";
+
+export interface ChatwootAgent {
+  id: number;
+  account_id: number;
+  availability_status?: "available" | "busy" | "offline";
+  email?: string;
+  available_name?: string;
+  name?: string;
+  role?: "agent" | "administrator";
+  thumbnail?: string | null;
+}
+
+export interface ChatwootTeam {
+  id: number;
+  name: string;
+  description?: string | null;
+  allow_auto_assign?: boolean;
+  account_id?: number;
+  is_member?: boolean;
+}
 
 export interface ChatwootConversation {
   id: number;
@@ -73,8 +107,8 @@ export interface ChatwootConversation {
   meta?: {
     sender?: ChatwootContactMeta;
     channel?: string;
-    assignee?: { name?: string | null } | null;
-    team?: { name?: string | null } | null;
+    assignee?: { id?: number; name?: string | null } | null;
+    team?: { id?: number; name?: string | null } | null;
   };
   custom_attributes?: Record<string, unknown>;
   messages?: Array<{
@@ -108,6 +142,7 @@ export interface KanbanCardData {
   updatedAt: number;
   assigneeName: string | null;
   teamName: string | null;
+  priority: string | null;
   contactEmail: string | null;
   contactPhone: string | null;
   price: number | null;
@@ -121,6 +156,7 @@ export interface KanbanCardDetail {
   leadName: string | null;
   contactNames: string[];
   companyNames: string[];
+  quickEdit: KanbanCardQuickEdit;
   sections: KanbanDetailSection[];
 }
 

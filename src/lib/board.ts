@@ -133,6 +133,19 @@ function humanizeStatus(status: string) {
   return map[status] ?? status;
 }
 
+function normalizePriority(priority: string | null | undefined) {
+  const normalized = asString(priority)?.toLowerCase() ?? null;
+  if (!normalized) {
+    return null;
+  }
+
+  if (["urgent", "high", "medium", "low"].includes(normalized)) {
+    return normalized;
+  }
+
+  return normalized;
+}
+
 function resolveStageKind(
   status: Pick<KommoPipeline["statuses"][number], "id" | "type" | "name"> | undefined,
   stageName?: string | null,
@@ -320,6 +333,7 @@ function resolveCard(
     updatedAt: Math.floor(conversation.updated_at),
     assigneeName: conversation.meta?.assignee?.name ?? null,
     teamName: conversation.meta?.team?.name ?? null,
+    priority: normalizePriority(conversation.priority),
     contactEmail: sender?.email ?? null,
     contactPhone: sender?.phone_number ?? null,
     price: asNumber(customAttributes.kommo_lead_price),

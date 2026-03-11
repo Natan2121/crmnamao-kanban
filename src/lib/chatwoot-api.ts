@@ -1,8 +1,11 @@
 import { getServerEnv, trimTrailingSlash } from "@/lib/env";
 import {
+  ChatwootAgent,
   ChatwootContactMeta,
   ChatwootConversation,
   ChatwootInbox,
+  ChatwootTeam,
+  ConversationPriorityValue,
   ConversationStatusValue,
 } from "@/lib/types";
 
@@ -17,6 +20,10 @@ interface ConversationsIndexResponse {
 
 interface InboxesResponse {
   payload: ChatwootInbox[];
+}
+
+interface CollectionResponse<T> {
+  payload?: T[];
 }
 
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -34,6 +41,20 @@ let conversationsCache:
   | {
       expiresAt: number;
       value: ChatwootConversation[];
+    }
+  | null = null;
+
+let agentsCache:
+  | {
+      expiresAt: number;
+      value: ChatwootAgent[];
+    }
+  | null = null;
+
+let teamsCache:
+  | {
+      expiresAt: number;
+      value: ChatwootTeam[];
     }
   | null = null;
 
@@ -71,18 +92,20 @@ async function chatwootRequest(path: string, init?: RequestInit) {
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
     try {
+      const headers = new Headers(init?.headers);
+      headers.set("Accept", "application/json");
+      headers.set("api_access_token", env.CHATWOOT_API_TOKEN);
+      if (!(init?.body instanceof FormData) && !headers.has("Content-Type")) {
+        headers.set("Content-Type", "application/json");
+      }
+
       const response = await fetch(
         `${trimTrailingSlash(env.CHATWOOT_BASE_URL)}${path}`,
         {
           ...init,
           cache: "no-store",
           signal: controller.signal,
-          headers: {
-            Accept: "application/json",
-            "Content-Type": "application/json",
-            api_access_token: env.CHATWOOT_API_TOKEN,
-            ...init?.headers,
-          },
+          headers,
         },
       );
 
@@ -128,6 +151,14 @@ async function chatwootFetch<T>(path: string, init?: RequestInit) {
   return JSON.parse(body) as T;
 }
 
+function extractCollection<T>(response: T[] | CollectionResponse<T>) {
+  if (Array.isArray(response)) {
+    return response;
+  }
+
+  return response.payload ?? [];
+}
+
 export async function fetchInboxes(force = false) {
   if (!force && inboxCache && inboxCache.expiresAt > Date.now()) {
     return inboxCache.value;
@@ -148,6 +179,42 @@ export async function fetchConversation(conversationId: number) {
   return chatwootFetch<ChatwootConversation>(
     accountScopedPath(`/conversations/${conversationId}`),
   );
+}
+
+export async function fetchAgents(force = false) {
+  if (!force && agentsCache && agentsCache.expiresAt > Date.now()) {
+    return agentsCache.value;
+  }
+
+  const response = await chatwootFetch<ChatwootAgent[] | CollectionResponse<ChatwootAgent>>(
+    accountScopedPath("/agents"),
+  );
+  const value = extractCollection(response);
+
+  agentsCache = {
+    expiresAt: Date.now() + CACHE_TTL_MS,
+    value,
+  };
+
+  return value;
+}
+
+export async function fetchTeams(force = false) {
+  if (!force && teamsCache && teamsCache.expiresAt > Date.now()) {
+    return teamsCache.value;
+  }
+
+  const response = await chatwootFetch<ChatwootTeam[] | CollectionResponse<ChatwootTeam>>(
+    accountScopedPath("/teams"),
+  );
+  const value = extractCollection(response);
+
+  teamsCache = {
+    expiresAt: Date.now() + CACHE_TTL_MS,
+    value,
+  };
+
+  return value;
 }
 
 export async function updateContact(
@@ -223,6 +290,88 @@ export async function updateConversationStatus(
 
   upsertConversationCacheEntry(conversation);
   return conversation;
+}
+
+export async function updateConversationPriority(
+  conversationId: number,
+  priority: ConversationPriorityValue,
+) {
+  const response = await chatwootRequest(accountScopedPath(`/conversations/${conversationId}`), {
+    method: "PATCH",
+    body: JSON.stringify({
+      priority: priority === "none" ? null : priority,
+    }),
+  });
+  const body = await response.text();
+
+  if (!body) {
+    return null;
+  }
+
+  const conversation = JSON.parse(body) as ChatwootConversation;
+  upsertConversationCacheEntry(conversation);
+  return conversation;
+}
+
+export async function updateConversationAssignment(
+  conversationId: number,
+  updates: {
+    assigneeId?: number | null;
+    teamId?: number | null;
+  },
+) {
+  if (updates.assigneeId === undefined && updates.teamId === undefined) {
+    return null;
+  }
+
+  const response = await chatwootRequest(accountScopedPath(`/conversations/${conversationId}/assignments`), {
+    method: "POST",
+    body: JSON.stringify({
+      assignee_id: updates.assigneeId ?? null,
+      team_id: updates.teamId ?? null,
+    }),
+  });
+  const body = await response.text();
+
+  if (!body) {
+    return null;
+  }
+
+  return JSON.parse(body) as Record<string, unknown>;
+}
+
+export async function createConversationAttachmentNote(
+  conversationId: number,
+  payload: {
+    content?: string;
+    attachments: File[];
+  },
+) {
+  const formData = new FormData();
+  formData.set(
+    "content",
+    payload.content?.trim() || "Arquivo anexado pelo kanban.",
+  );
+  formData.set("message_type", "outgoing");
+  formData.set("private", "true");
+  payload.attachments.forEach((attachment) => {
+    formData.append("attachments[]", attachment, attachment.name);
+  });
+
+  const response = await chatwootRequest(
+    accountScopedPath(`/conversations/${conversationId}/messages`),
+    {
+      method: "POST",
+      body: formData,
+    },
+  );
+  const body = await response.text();
+
+  if (!body) {
+    return null;
+  }
+
+  return JSON.parse(body) as { id?: number };
 }
 
 export async function fetchAllConversations(force = false) {

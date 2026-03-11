@@ -8,9 +8,14 @@ import {
   serializeCardOverrides,
 } from "@/lib/card-overrides";
 import {
+  createConversationAttachmentNote,
+  fetchAgents,
   fetchConversation,
+  fetchTeams,
   updateContact,
+  updateConversationAssignment,
   updateConversationCustomAttributes,
+  updateConversationPriority,
   updateConversationStatus,
 } from "@/lib/chatwoot-api";
 import {
@@ -21,11 +26,14 @@ import {
 import { getKommoPipelines } from "@/lib/kommo-structure";
 import { assertAppAccess } from "@/lib/security";
 import {
+  ConversationPriorityValue,
   ConversationStatusValue,
+  KanbanCardQuickEdit,
   KanbanCardDetail,
   KanbanCardFieldOverride,
   KanbanCardOverrides,
   KanbanDetailSection,
+  KanbanResponsibleOption,
 } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -42,6 +50,8 @@ const patchSchema = z.object({
   pipelineId: z.number().int().positive(),
   stageName: z.string().trim().min(1).max(120),
   status: z.enum(["open", "pending", "resolved", "snoozed"]),
+  responsibleKey: z.string().trim().max(64).optional(),
+  priority: z.enum(["urgent", "high", "medium", "low", "none"]).optional(),
   price: z.string().trim().max(64).optional(),
   fields: z.array(editableFieldSchema).max(160),
 });
@@ -149,7 +159,179 @@ function parsePrice(value: string | undefined) {
   return parsed;
 }
 
-function buildCardDetail(conversationId: number, conversation: Awaited<ReturnType<typeof fetchConversation>>) {
+function normalizeOptionalText(value: string | null | undefined) {
+  if (typeof value !== "string") {
+    return value ?? null;
+  }
+
+  const normalized = normalizeText(value);
+  return normalized || null;
+}
+
+function normalizePriority(
+  value: string | null | undefined,
+): ConversationPriorityValue {
+  switch (value?.trim().toLowerCase()) {
+    case "urgent":
+    case "high":
+    case "medium":
+    case "low":
+      return value.trim().toLowerCase() as ConversationPriorityValue;
+    default:
+      return "none";
+  }
+}
+
+function formatPriceInput(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Number.isInteger(value) ? String(value) : String(value).replace(".", ",");
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
+  }
+
+  return "";
+}
+
+function buildResponsibleKey(type: KanbanResponsibleOption["type"], id: number | null) {
+  if (type === "none" || !id) {
+    return "none";
+  }
+
+  return `${type}:${id}`;
+}
+
+function parseResponsibleKey(responsibleKey: string | undefined) {
+  if (!responsibleKey || responsibleKey === "none") {
+    return {
+      assigneeId: null,
+      teamId: null,
+      preserveCurrent: responsibleKey === undefined,
+    };
+  }
+
+  if (
+    responsibleKey.startsWith("current-agent:") ||
+    responsibleKey.startsWith("current-team:")
+  ) {
+    return {
+      assigneeId: undefined,
+      teamId: undefined,
+      preserveCurrent: true,
+    };
+  }
+
+  const [type, rawId] = responsibleKey.split(":");
+  const id = Number(rawId);
+  if (!Number.isInteger(id) || id <= 0) {
+    throw new Error("Responsavel invalido.");
+  }
+
+  if (type === "agent") {
+    return {
+      assigneeId: id,
+      teamId: null,
+      preserveCurrent: false,
+    };
+  }
+
+  if (type === "team") {
+    return {
+      assigneeId: null,
+      teamId: id,
+      preserveCurrent: false,
+    };
+  }
+
+  throw new Error("Responsavel invalido.");
+}
+
+async function loadResponsibleOptions(
+  conversation: Awaited<ReturnType<typeof fetchConversation>>,
+) {
+  const [agentsResult, teamsResult] = await Promise.allSettled([
+    fetchAgents(),
+    fetchTeams(),
+  ]);
+
+  const agents =
+    agentsResult.status === "fulfilled" ? agentsResult.value : [];
+  const teams =
+    teamsResult.status === "fulfilled" ? teamsResult.value : [];
+
+  const options: KanbanResponsibleOption[] = [
+    {
+      key: "none",
+      label: "Sem responsavel",
+      type: "none",
+    },
+    ...agents.map((agent) => ({
+      key: buildResponsibleKey("agent", agent.id),
+      label: agent.available_name?.trim() || agent.name?.trim() || agent.email?.trim() || `Agente #${agent.id}`,
+      type: "agent" as const,
+    })),
+    ...teams.map((team) => ({
+      key: buildResponsibleKey("team", team.id),
+      label: `Equipe: ${team.name}`,
+      type: "team" as const,
+    })),
+  ];
+
+  const assigneeId = conversation.meta?.assignee?.id;
+  const assigneeName = conversation.meta?.assignee?.name?.trim() || null;
+  const teamId = conversation.meta?.team?.id;
+  const teamName = conversation.meta?.team?.name?.trim() || null;
+
+  let responsibleKey = "none";
+
+  if (Number.isInteger(assigneeId) && assigneeId && options.some((option) => option.key === buildResponsibleKey("agent", assigneeId))) {
+    responsibleKey = buildResponsibleKey("agent", assigneeId);
+  } else if (assigneeName) {
+    const matchingAgent = options.find(
+      (option) => option.type === "agent" && option.label === assigneeName,
+    );
+    if (matchingAgent) {
+      responsibleKey = matchingAgent.key;
+    } else {
+      const fallbackKey = `current-agent:${encodeURIComponent(assigneeName)}`;
+      options.push({
+        key: fallbackKey,
+        label: assigneeName,
+        type: "agent",
+      });
+      responsibleKey = fallbackKey;
+    }
+  } else if (Number.isInteger(teamId) && teamId && options.some((option) => option.key === buildResponsibleKey("team", teamId))) {
+    responsibleKey = buildResponsibleKey("team", teamId);
+  } else if (teamName) {
+    const teamLabel = `Equipe: ${teamName}`;
+    const matchingTeam = options.find(
+      (option) => option.type === "team" && option.label === teamLabel,
+    );
+    if (matchingTeam) {
+      responsibleKey = matchingTeam.key;
+    } else {
+      const fallbackKey = `current-team:${encodeURIComponent(teamName)}`;
+      options.push({
+        key: fallbackKey,
+        label: teamLabel,
+        type: "team",
+      });
+      responsibleKey = fallbackKey;
+    }
+  }
+
+  return {
+    responsibleKey,
+    responsibleOptions: options,
+  } satisfies Pick<KanbanCardQuickEdit, "responsibleKey" | "responsibleOptions">;
+}
+
+async function buildCardDetail(
+  conversationId: number,
+  conversation: Awaited<ReturnType<typeof fetchConversation>>,
+) {
   const leadId = asLeadId(conversation.custom_attributes?.kommo_lead_id);
   const kommoSummary = getKommoCardSummary(leadId);
   const fallbackSummary = buildFallbackCardSummary(conversation);
@@ -159,9 +341,16 @@ function buildCardDetail(conversationId: number, conversation: Awaited<ReturnTyp
     return null;
   }
 
+  const quickEdit = {
+    price: formatPriceInput(conversation.custom_attributes?.kommo_lead_price),
+    priority: normalizePriority(conversation.priority),
+    ...(await loadResponsibleOptions(conversation)),
+  } satisfies KanbanCardQuickEdit;
+
   const baseDetail = {
     conversationId,
     ...mergedSummary,
+    quickEdit,
   } satisfies KanbanCardDetail;
   const runtimeDetail =
     fallbackSummary && fallbackSummary.sections.length
@@ -195,7 +384,7 @@ export async function GET(request: NextRequest) {
     }
 
     const conversation = await fetchConversation(conversationId);
-    const detail = buildCardDetail(conversationId, conversation);
+    const detail = await buildCardDetail(conversationId, conversation);
 
     if (!detail) {
       return NextResponse.json(
@@ -208,6 +397,56 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Falha ao montar o resumo do card.";
+
+    return NextResponse.json(
+      { error: message },
+      { status: message === "Nao autorizado." ? 401 : 500 },
+    );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    assertAppAccess(request);
+
+    const formData = await request.formData();
+    const parsedConversationId = Number(formData.get("conversationId"));
+    const noteValue = formData.get("note");
+    const note =
+      typeof noteValue === "string" ? noteValue.trim().slice(0, 2000) : "";
+    const attachments = [
+      ...formData.getAll("attachments[]"),
+      ...formData.getAll("attachments"),
+    ].filter((value): value is File => value instanceof File && value.size > 0);
+
+    if (!Number.isInteger(parsedConversationId) || parsedConversationId <= 0) {
+      return NextResponse.json(
+        { error: "conversationId invalido." },
+        { status: 400 },
+      );
+    }
+
+    if (!attachments.length) {
+      return NextResponse.json(
+        { error: "Selecione pelo menos um arquivo para anexar." },
+        { status: 422 },
+      );
+    }
+
+    await fetchConversation(parsedConversationId);
+    await createConversationAttachmentNote(parsedConversationId, {
+      content: note,
+      attachments,
+    });
+
+    return NextResponse.json({
+      ok: true,
+      uploadedCount: attachments.length,
+      message: `${attachments.length} arquivo${attachments.length === 1 ? "" : "s"} anexado${attachments.length === 1 ? "" : "s"} na conversa.`,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Falha ao anexar os arquivos.";
 
     return NextResponse.json(
       { error: message },
@@ -241,10 +480,17 @@ export async function PATCH(request: NextRequest) {
     }
 
     const conversation = await fetchConversation(payload.conversationId);
+    const currentDetail = await buildCardDetail(payload.conversationId, conversation);
     const senderId = conversation.meta?.sender?.id;
     const currentCustomAttributes = {
       ...(conversation.custom_attributes ?? {}),
     };
+    const currentFieldValues = new Map(
+      flattenSections(currentDetail?.sections ?? []).map((field) => [
+        fieldKey(field.sectionTitle, field.label),
+        normalizeText(field.value),
+      ]),
+    );
     const existingOverrides = parseCardOverrides(
       currentCustomAttributes[CARD_OVERRIDES_ATTRIBUTE_KEY],
     );
@@ -260,6 +506,7 @@ export async function PATCH(request: NextRequest) {
       email?: string | null;
       phoneNumber?: string | null;
     } = {};
+    const responsibleUpdate = parseResponsibleKey(payload.responsibleKey);
     const parsedPrice = parsePrice(payload.price);
 
     for (const field of payload.fields) {
@@ -272,21 +519,33 @@ export async function PATCH(request: NextRequest) {
 
       if (isContactSection(field.sectionTitle) && isNameLabel(field.label)) {
         if (senderId) {
-          contactUpdates.name = normalizeText(field.value) || null;
+          const normalizedValue = normalizeText(field.value);
+          if (currentFieldValues.get(key) === normalizedValue) {
+            continue;
+          }
+          contactUpdates.name = normalizedValue || null;
           continue;
         }
       }
 
       if (isContactSection(field.sectionTitle) && isEmailLabel(field.label)) {
         if (senderId) {
-          contactUpdates.email = normalizeText(field.value) || null;
+          const normalizedValue = normalizeText(field.value);
+          if (currentFieldValues.get(key) === normalizedValue) {
+            continue;
+          }
+          contactUpdates.email = normalizedValue || null;
           continue;
         }
       }
 
       if (isContactSection(field.sectionTitle) && isPhoneLabel(field.label)) {
         if (senderId) {
-          contactUpdates.phoneNumber = normalizeText(field.value) || null;
+          const normalizedValue = normalizeText(field.value);
+          if (currentFieldValues.get(key) === normalizedValue) {
+            continue;
+          }
+          contactUpdates.phoneNumber = normalizedValue || null;
           continue;
         }
       }
@@ -343,8 +602,43 @@ export async function PATCH(request: NextRequest) {
       delete currentCustomAttributes[CARD_OVERRIDES_ATTRIBUTE_KEY];
     }
 
+    const currentSender = conversation.meta?.sender;
+    if (
+      contactUpdates.name !== undefined &&
+      normalizeOptionalText(contactUpdates.name) ===
+        normalizeOptionalText(currentSender?.name)
+    ) {
+      delete contactUpdates.name;
+    }
+    if (
+      contactUpdates.email !== undefined &&
+      normalizeOptionalText(contactUpdates.email) ===
+        normalizeOptionalText(currentSender?.email)
+    ) {
+      delete contactUpdates.email;
+    }
+    if (
+      contactUpdates.phoneNumber !== undefined &&
+      normalizeOptionalText(contactUpdates.phoneNumber) ===
+        normalizeOptionalText(currentSender?.phone_number)
+    ) {
+      delete contactUpdates.phoneNumber;
+    }
+
     if (senderId) {
       await updateContact(senderId, contactUpdates);
+    }
+
+    if (!responsibleUpdate.preserveCurrent) {
+      await updateConversationAssignment(payload.conversationId, {
+        assigneeId: responsibleUpdate.assigneeId,
+        teamId: responsibleUpdate.teamId,
+      });
+    }
+
+    const nextPriority = payload.priority ?? normalizePriority(conversation.priority);
+    if (nextPriority !== normalizePriority(conversation.priority)) {
+      await updateConversationPriority(payload.conversationId, nextPriority);
     }
 
     if (
@@ -362,7 +656,7 @@ export async function PATCH(request: NextRequest) {
     );
 
     const updatedConversation = await fetchConversation(payload.conversationId);
-    const detail = buildCardDetail(payload.conversationId, updatedConversation);
+    const detail = await buildCardDetail(payload.conversationId, updatedConversation);
 
     if (!detail) {
       return NextResponse.json(

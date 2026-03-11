@@ -8,7 +8,7 @@ import {
   KanbanDetailSection,
 } from "@/lib/types";
 
-type StoredCardSummary = Omit<KanbanCardDetail, "conversationId">;
+type StoredCardSummary = Omit<KanbanCardDetail, "conversationId" | "quickEdit">;
 
 const summaryIndex = summaries as Record<string, StoredCardSummary>;
 
