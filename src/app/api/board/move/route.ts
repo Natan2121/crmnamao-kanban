@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { invalidateBoardCache } from "@/lib/board";
 import { fetchConversation, updateConversationCustomAttributes } from "@/lib/chatwoot-api";
 import { getPipelineById } from "@/lib/kommo-structure";
 import { assertAppAccess } from "@/lib/security";
@@ -31,12 +30,10 @@ export async function POST(request: Request) {
     }
 
     const conversation = await fetchConversation(payload.conversationId);
-    const movedAt = new Date().toISOString();
     const customAttributes = {
       ...(conversation.custom_attributes ?? {}),
       kommo_pipeline: pipeline.name,
       kommo_stage: payload.stageName,
-      kommo_stage_changed_at: movedAt,
     };
 
     await updateConversationCustomAttributes(
@@ -53,8 +50,6 @@ export async function POST(request: Request) {
         { status: 502 },
       );
     }
-
-    invalidateBoardCache();
 
     return NextResponse.json({
       ok: true,

@@ -1,20 +1,21 @@
-@import "tailwindcss";
+﻿@import "tailwindcss";
 
 :root {
-  --background: #f4f7fb;
-  --foreground: #0f172a;
+  --background: #f5f7fa;
+  --foreground: #344054;
+  --font-family-sans: "PT Sans", Arial, sans-serif;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
+  --font-sans: var(--font-family-sans);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-sans), sans-serif;
+  font-family: var(--font-family-sans);
 }
 
 a {
@@ -23,41 +24,36 @@ a {
 }
 
 .kanban-shell .react-kanban-board {
-  align-items: stretch;
+  align-items: flex-start;
   display: inline-flex;
-  gap: 0.5rem;
+  gap: 0.6rem;
   min-width: max-content;
-  overflow-y: visible !important;
-  padding-bottom: 0.25rem;
 }
 
 .kanban-shell .react-kanban-column {
-  background: linear-gradient(180deg, rgba(249, 250, 252, 0.96), rgba(244, 247, 251, 0.96));
-  border: 1px solid rgba(203, 213, 225, 0.58);
-  border-radius: 1.25rem;
-  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.035);
-  display: flex;
-  flex-direction: column;
+  background: linear-gradient(180deg, #eef2f6, #f8fafc);
+  border: 1px solid #d7dde4;
+  border-radius: 18px;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.06);
   padding: 0.35rem;
-  position: relative;
-  width: 316px;
-}
-
-.kanban-shell .react-kanban-column > div:first-child {
-  margin-bottom: 0.5rem;
-  position: relative;
-  will-change: transform;
-  z-index: 20;
+  width: 324px;
 }
 
 .kanban-shell .react-kanban-column > div:last-child {
   display: flex;
-  flex: 1;
   flex-direction: column;
   gap: 0.4rem;
-  min-height: 560px;
-  position: relative;
-  z-index: 1;
+  min-height: 610px;
+}
+
+.kanban-shell .react-kanban-column > div:last-child > div {
+  width: 100%;
+}
+
+.kanban-shell .react-kanban-column > div:last-child > div > div {
+  box-sizing: border-box;
+  display: block !important;
+  width: 100% !important;
 }
 
 .kanban-shell .react-kanban-card {
@@ -68,48 +64,22 @@ a {
   width: 100%;
 }
 
-.kanban-shell .react-kanban-column > div:last-child > div {
-  width: 100%;
-}
-
-.kanban-shell .react-kanban-column > div:last-child > div > div {
-  display: block !important;
-  width: 100% !important;
-  white-space: normal;
-}
-
 .kanban-shell .react-kanban-card--dragging {
-  transform: rotate(1.2deg) scale(0.995);
+  transform: rotate(1deg) scale(1.01);
 }
 
-.kanban-scroll {
-  cursor: all-scroll;
-  overscroll-behavior: contain;
-  scrollbar-gutter: stable both-edges;
-  touch-action: pan-y pinch-zoom;
+.kanban-shell::-webkit-scrollbar {
+  height: 10px;
 }
 
-.kanban-scroll--panning,
-.kanban-scroll--panning * {
-  cursor: grabbing !important;
-  user-select: none;
+.kanban-shell::-webkit-scrollbar-thumb {
+  background: rgba(52, 64, 84, 0.18);
+  border-radius: 999px;
 }
 
-.kanban-column-header,
-.kanban-scroll button,
-.kanban-scroll a,
-.kanban-scroll input,
-.kanban-scroll select,
-.kanban-scroll textarea,
-.kanban-scroll label {
-  cursor: auto;
-}
-
-.kanban-column-header {
-  isolation: isolate;
-  overflow: hidden;
-  position: relative;
-  z-index: 2;
+.kanban-shell::-webkit-scrollbar-track {
+  background: rgba(52, 64, 84, 0.05);
+  border-radius: 999px;
 }
 
 .line-clamp-3 {

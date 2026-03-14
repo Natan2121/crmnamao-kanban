@@ -45,7 +45,15 @@ Ou para validar build de producao:
 
 ```bash
 npm run check
+npm run check:env
+npm run preflight:release
 npm run start
+```
+
+Smoke test do board publicado ou local:
+
+```bash
+npm run smoke:board -- --base-url http://localhost:3000 --app-key SUA_CHAVE
 ```
 
 ## Deploy no Coolify

@@ -1,21 +1,10 @@
-import type { Metadata } from "next";
-import { Fraunces, Space_Grotesk } from "next/font/google";
+﻿import type { Metadata } from "next";
 import "@caldwell619/react-kanban/dist/styles.css";
 import "./globals.css";
 
-const display = Fraunces({
-  variable: "--font-display",
-  subsets: ["latin"],
-});
-
-const sans = Space_Grotesk({
-  variable: "--font-sans",
-  subsets: ["latin"],
-});
-
 export const metadata: Metadata = {
-  title: "CRMnaMao Funis",
-  description: "Quadro operacional de funis conectado ao Chatwoot.",
+  title: "CRMnaMao Kanban",
+  description: "Kanban operacional do Chatwoot conectado aos canais reais.",
 };
 
 export default function RootLayout({
@@ -25,9 +14,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR">
-      <body className={`${display.variable} ${sans.variable} antialiased`}>
-        {children}
-      </body>
+      <body className="antialiased">{children}</body>
     </html>
   );
 }

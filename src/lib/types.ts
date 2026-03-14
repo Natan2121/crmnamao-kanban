@@ -27,70 +27,6 @@ export interface ChatwootContactMeta {
   email?: string;
   phone_number?: string;
   thumbnail?: string | null;
-  custom_attributes?: Record<string, unknown>;
-}
-
-export interface KanbanCardHighlight {
-  label: string;
-  value: string;
-}
-
-export interface KanbanDetailField {
-  label: string;
-  value: string;
-}
-
-export interface KanbanDetailSection {
-  id: string;
-  title: string;
-  fields: KanbanDetailField[];
-}
-
-export interface KanbanResponsibleOption {
-  key: string;
-  label: string;
-  type: "none" | "agent" | "team";
-}
-
-export interface KanbanCardQuickEdit {
-  price: string;
-  responsibleKey: string;
-  priority: ConversationPriorityValue;
-  responsibleOptions: KanbanResponsibleOption[];
-}
-
-export interface KanbanCardFieldOverride {
-  sectionTitle: string;
-  label: string;
-  value: string;
-}
-
-export interface KanbanCardOverrides {
-  title?: string | null;
-  fields: KanbanCardFieldOverride[];
-}
-
-export type ConversationStatusValue = "open" | "pending" | "resolved" | "snoozed";
-export type ConversationPriorityValue = "urgent" | "high" | "medium" | "low" | "none";
-
-export interface ChatwootAgent {
-  id: number;
-  account_id: number;
-  availability_status?: "available" | "busy" | "offline";
-  email?: string;
-  available_name?: string;
-  name?: string;
-  role?: "agent" | "administrator";
-  thumbnail?: string | null;
-}
-
-export interface ChatwootTeam {
-  id: number;
-  name: string;
-  description?: string | null;
-  allow_auto_assign?: boolean;
-  account_id?: number;
-  is_member?: boolean;
 }
 
 export interface ChatwootConversation {
@@ -107,8 +43,8 @@ export interface ChatwootConversation {
   meta?: {
     sender?: ChatwootContactMeta;
     channel?: string;
-    assignee?: { id?: number; name?: string | null } | null;
-    team?: { id?: number; name?: string | null } | null;
+    assignee?: { name?: string | null } | null;
+    team?: { name?: string | null } | null;
   };
   custom_attributes?: Record<string, unknown>;
   messages?: Array<{
@@ -124,17 +60,13 @@ export interface KanbanCardData {
   title: string;
   description: string;
   contactThumbnail: string | null;
-  highlights: KanbanCardHighlight[];
   pipelineName: string;
   stageName: string;
-  stageId: number | null;
-  stageKind: "incoming" | "open" | "won" | "lost" | "unmapped";
-  stageEnteredAt: number;
   stageColor: string;
   inboxName: string;
   channelLabel: string;
   conversationStatus: string;
-  conversationStatusValue: string;
+  priority: string | null;
   unreadCount: number;
   tags: string[];
   lastActivityAt: number;
@@ -142,39 +74,21 @@ export interface KanbanCardData {
   updatedAt: number;
   assigneeName: string | null;
   teamName: string | null;
-  priority: string | null;
   contactEmail: string | null;
   contactPhone: string | null;
   price: number | null;
   leadId: string | null;
+  scheduledAt: string | null;
+  taskType: string | null;
+  scheduleUpdatedAt: string | null;
+  scheduleUpdatedBy: string | null;
   openUrl: string;
-}
-
-export interface KanbanCardDetail {
-  conversationId: number;
-  leadId: string | null;
-  leadName: string | null;
-  contactNames: string[];
-  companyNames: string[];
-  quickEdit: KanbanCardQuickEdit;
-  sections: KanbanDetailSection[];
-}
-
-export interface PipelineStageSummary {
-  id: number;
-  name: string;
-  color: string;
-  kind: KanbanCardData["stageKind"];
 }
 
 export interface KanbanColumnData {
   id: string;
   title: string;
   color: string;
-  stageId: number | null;
-  stageKind: "incoming" | "open" | "won" | "lost" | "unmapped";
-  cardCount: number;
-  totalValue: number;
   cards: KanbanCardData[];
 }
 
@@ -183,13 +97,6 @@ export interface PipelineSummary {
   name: string;
   isMain: boolean;
   stageCount: number;
-  statuses: PipelineStageSummary[];
-  totalCards: number;
-  totalValue: number;
-  wonCards: number;
-  wonValue: number;
-  lostCards: number;
-  lostValue: number;
 }
 
 export interface BoardBreakdownItem {
@@ -202,13 +109,6 @@ export interface BoardMetrics {
   totalCards: number;
   stageCount: number;
   unreadCards: number;
-  totalValue: number;
-  wonCards: number;
-  wonValue: number;
-  lostCards: number;
-  lostValue: number;
-  overallCards: number;
-  overallValue: number;
   channelBreakdown: BoardBreakdownItem[];
   statusBreakdown: BoardBreakdownItem[];
 }
