@@ -264,6 +264,18 @@ function resolveParentOrigin() {
   }
 }
 
+function openConversationUrl(url: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const popup = window.open(url, "_blank", "noopener,noreferrer");
+
+  if (!popup) {
+    window.location.href = url;
+  }
+}
+
 function getScheduleBucket(isoDate: string | null | undefined) {
   if (!isoDate) {
     return "unscheduled";
@@ -909,7 +921,18 @@ export function KanbanDashboard() {
 
                   return (
                     <article
-                      className={`group flex h-[124px] w-full flex-col overflow-hidden rounded-[12px] border border-[#d7dde4] bg-white px-2 py-1.5 text-[#344054] shadow-[0_8px_18px_rgba(15,23,42,0.05)] transition ${options.dragging ? "opacity-95" : ""} ${isMoving ? "ring-2 ring-[#cdd5df]" : ""}`}
+                      className={`group flex h-[124px] w-full cursor-pointer flex-col overflow-hidden rounded-[12px] border border-[#d7dde4] bg-white px-2 py-1.5 text-[#344054] shadow-[0_8px_18px_rgba(15,23,42,0.05)] transition hover:border-[#98a2b3] hover:shadow-[0_12px_24px_rgba(15,23,42,0.08)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#98a2b3] ${options.dragging ? "opacity-95" : ""} ${isMoving ? "ring-2 ring-[#cdd5df]" : ""}`}
+                      onClick={() => {
+                        openConversationUrl(card.record.openUrl);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          openConversationUrl(card.record.openUrl);
+                        }
+                      }}
+                      role="link"
+                      tabIndex={0}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex min-w-0 items-center gap-1">
@@ -938,6 +961,9 @@ export function KanbanDashboard() {
                                 : "Agendar compromisso do card"
                             }
                             className="inline-flex h-[18px] w-[18px] items-center justify-center rounded-[6px] border border-[#d0d5dd] bg-[#f8fafc] text-[#98a2b3] transition hover:bg-[#eef2f6] hover:text-[#101828]"
+                            onPointerDown={(event) => {
+                              event.stopPropagation();
+                            }}
                             onClick={(event) => {
                               event.preventDefault();
                               event.stopPropagation();
@@ -956,6 +982,12 @@ export function KanbanDashboard() {
                             aria-label="Abrir conversa completa"
                             className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[6px] border border-[#d0d5dd] bg-[#f8fafc] text-[#98a2b3] transition hover:bg-[#eef2f6] hover:text-[#101828]"
                             href={card.record.openUrl}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                            }}
+                            onPointerDown={(event) => {
+                              event.stopPropagation();
+                            }}
                             rel="noreferrer"
                             target="_blank"
                             title="Abrir conversa completa"
